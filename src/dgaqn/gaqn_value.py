@@ -92,16 +92,21 @@ class TargetGAQN(nn.Module):
         return states_next, actions.squeeze_().tolist()
 
     def select_value(self, candidates, batch_idx):
-        old_q_candidates = self.critic_target.get_value(candidates)
+        values = self.critic_target.get_value(candidates)
+        qs_next = self.actor.select_action(values, values, batch_idx)
+
+        return qs_next, values
+
+    def get_value(self, candidates):
+        return self.critic_target.get_value(candidates)
+
+    def update(self, states, candidates, rewards, terminals, old_qs_next, old_values, batch_idx):
         if self.double_q:
-            q_candidates = self.critic.get_value(candidates)
+            values = self.critic.get_value(candidates)
+            qs_next = self.actor.select_action(old_values, values, batch_idx)
         else:
-            q_candidates = old_q_candidates
-
-        return self.actor.select_action(old_q_candidates, q_candidates, batch_idx)
-
-    def update(self, states, rewards, terminals, old_values):
-        loss = self.critic.loss(states, rewards, terminals, old_values)
+            qs_next = old_qs_next
+        loss = self.critic.loss(states, rewards, qs_next, terminals)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -154,10 +159,10 @@ class GAQN_Critic(nn.Module):
             q_candidates = self(candidates)
         return q_candidates.detach()
 
-    def loss(self, states, rewards, terminals, old_values):
-        q = self(states)
-        targets = rewards + self.gamma * old_values * (1 - terminals)
-        loss = self.MseLoss(q, targets)
+    def loss(self, states, rewards, qs_next, terminals):
+        qs = self(states)
+        targets = rewards + self.gamma * qs_next * (1 - terminals)
+        loss = self.MseLoss(qs, targets)
 
         return loss
 

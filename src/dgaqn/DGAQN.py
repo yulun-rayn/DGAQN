@@ -168,13 +168,13 @@ class DGAQN(nn.Module):
                         for i in range(1+self.use_3d)]
         terminals = torch.tensor(memory.terminals).to(self.device)
 
-        old_values = self.criterion.select_value(candidates, batch_idx)
+        old_qs_next, old_values = self.criterion.select_value(candidates, batch_idx)
 
         # Optimize value for k epochs:
         logging.info("Optimizing...")
 
         for i in range(self.k_epochs):
-            loss = self.criterion.update(states, rewards, terminals, old_values)
+            loss = self.criterion.update(states, rewards, terminals, old_qs_next, old_values, batch_idx)
             rnd_loss = self.explore_critic.update(states_next)
             if (i%10)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))
