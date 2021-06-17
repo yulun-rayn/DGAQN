@@ -8,6 +8,8 @@ import torch_geometric as pyg
 
 from gnn_embed import sGAT
 
+from utils.graph_utils import get_batch_shift
+
 #####################################################
 #                 BATCHED OPERATIONS                #
 #####################################################
@@ -81,9 +83,11 @@ class TargetGAQN(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def select_state(self, candidates, batch_idx):
+    def select_action(self, candidates, batch_idx):
         q_candidates = self.critic.get_value(candidates)
-        return self.actor.select_action(candidates, q_candidates, batch_idx)
+        shifted_actions = self.actor.select_action(range(len(batch_idx)), q_candidates, batch_idx)
+
+        return shifted_actions - get_batch_shift(batch_idx)
 
     def select_value(self, candidates, batch_idx):
         old_q_candidates = self.critic_target.get_value(candidates)
@@ -91,10 +95,11 @@ class TargetGAQN(nn.Module):
             q_candidates = self.critic.get_value(candidates)
         else:
             q_candidates = old_q_candidates
+
         return self.actor.select_action(old_q_candidates, q_candidates, batch_idx)
 
-    def update(self, states, rewards, terminals, old_q_next):
-        loss = self.critic.loss(states, rewards, terminals, old_q_next)
+    def update(self, states, rewards, terminals, old_values):
+        loss = self.critic.loss(states, rewards, terminals, old_values)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -144,9 +149,9 @@ class GAQN_Critic(nn.Module):
             q_candidates = self(candidates)
         return q_candidates.detach()
 
-    def loss(self, states, rewards, terminals, old_q_next):
+    def loss(self, states, rewards, terminals, old_values):
         q = self(states)
-        targets = rewards + self.gamma * old_q_next * (1 - terminals)
+        targets = rewards + self.gamma * old_values * (1 - terminals)
         loss = self.MseLoss(q, targets)
 
         return loss
