@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch_geometric as pyg
 from torch_geometric.data import Data, Batch
 
+from gnn_embed import init_sGAT
+
 from .gaqn_value import TargetGAQN
 from .rnd_explore import RNDistillation
 
@@ -14,27 +16,36 @@ from .rnd_explore import RNDistillation
 #                   HELPER MODULES                  #
 #####################################################
 
-class Memory:
-    def __init__(self):
-        self.states = []        # state representations: pyg graph
-        self.candidates = []    # next state (candidate) representations: pyg graph
-        self.states_next = []   # next state (chosen) representations: pyg graph
-        self.rewards = []       # rewards: float
-        self.terminals = []     # trajectory status: logical
+def init_DGAQN(state):
+    net = DGAQN(state['lr'],
+                state['betas'],
+                state['eps'],
+                state['gamma'],
+                state['eps_clip'],
+                state['double_q'],
+                state['k_epochs'],
+                state['emb_state'],
+                state['emb_nb_shared'],
+                state['input_dim'],
+                state['nb_edge_types'],
+                state['use_3d'],
+                state['gnn_nb_layers'],
+                state['gnn_nb_hidden'],
+                state['val_nb_layers'],
+                state['val_nb_hidden'],
+                state['rnd_nb_layers'],
+                state['rnd_nb_hidden'],
+                state['rnd_nb_output'],
+                state['use_3d'])
+    net.load_state_dict(state['state_dict'])
+    return net
 
-    def extend(self, memory):
-        self.states.extend(memory.states)
-        self.candidates.extend(memory.candidates)
-        self.states_next.extend(memory.states_next)
-        self.rewards.extend(memory.rewards)
-        self.terminals.extend(memory.terminals)
+def load_DGAQN(state_path):
+    state = torch.load(state_path)
+    return init_DGAQN(state)
 
-    def clear(self):
-        del self.states[:]
-        del self.candidates[:]
-        del self.states_next[:]
-        del self.rewards[:]
-        del self.terminals[:]
+def save_DGAQN(net, state_path=None):
+    torch.save(net.get_dict(), state_path)
 
 #################################################
 #                  MAIN MODEL                   #
@@ -49,7 +60,7 @@ class DGAQN(nn.Module):
                  eps_clip,
                  double_q,
                  k_epochs,
-                 emb_model,
+                 emb_state,
                  emb_nb_shared,
                  input_dim,
                  nb_edge_types,
@@ -62,12 +73,35 @@ class DGAQN(nn.Module):
                  rnd_nb_hidden,
                  rnd_nb_output):
         super(DGAQN, self).__init__()
-        self.gamma = gamma
-        self.k_epochs = k_epochs
-        self.use_3d = use_3d
+        if emb_state is not None:
+            emb_model = init_sGAT(emb_state)
+            print("embed model loaded")
+            emb_model.eval()
+            print(emb_model)
+        else:
+            emb_model = None
         self.emb_model = emb_model
         self.emb_3d = emb_model.use_3d if emb_model is not None else use_3d
-        self.emb_nb_shared = emb_nb_shared
+
+        self.lr=lr
+        self.betas=betas
+        self.eps=eps
+        self.gamma=gamma
+        self.eps_clip=eps_clip
+        self.double_q=double_q
+        self.k_epochs=k_epochs
+        self.emb_state=emb_state
+        self.emb_nb_shared=emb_nb_shared
+        self.input_dim=input_dim
+        self.nb_edge_types=nb_edge_types
+        self.use_3d=use_3d
+        self.gnn_nb_layers=gnn_nb_layers
+        self.gnn_nb_hidden=gnn_nb_hidden
+        self.val_nb_layers=val_nb_layers
+        self.val_nb_hidden=val_nb_hidden
+        self.rnd_nb_layers=rnd_nb_layers
+        self.rnd_nb_hidden=rnd_nb_hidden
+        self.rnd_nb_output=rnd_nb_output
 
         self.criterion = TargetGAQN(lr[0],
                                     betas,
@@ -169,7 +203,7 @@ class DGAQN(nn.Module):
         # Optimize value for k epochs:
         logging.info("Optimizing...")
 
-        for i in range(self.k_epochs):
+        for i in range(1, self.k_epochs+1):
             loss = self.criterion.update(states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx)
             rnd_loss = self.explore_critic.update(states_next)
             if (i%10)==0:
@@ -177,6 +211,29 @@ class DGAQN(nn.Module):
 
         # Copy new weights into target network:
         self.criterion.update_target()
+
+    def get_dict(self):
+        state = {'state_dict': self.state_dict(),
+                    'lr': self.lr,
+                    'betas': self.betas,
+                    'eps': self.eps,
+                    'gamma': self.gamma,
+                    'eps_clip': self.eps_clip,
+                    'double_q': self.double_q,
+                    'k_epochs': self.k_epochs,
+                    'emb_state': self.emb_state,
+                    'emb_nb_shared': self.emb_nb_shared,
+                    'input_dim': self.input_dim,
+                    'nb_edge_types': self.nb_edge_types,
+                    'use_3d': self.use_3d,
+                    'gnn_nb_layers': self.gnn_nb_layers,
+                    'gnn_nb_hidden': self.gnn_nb_hidden,
+                    'val_nb_layers': self.val_nb_layers,
+                    'val_nb_hidden': self.val_nb_hidden,
+                    'rnd_nb_layers': self.rnd_nb_layers,
+                    'rnd_nb_hidden': self.rnd_nb_hidden,
+                    'rnd_nb_output': self.rnd_nb_output}
+        return state
 
     def __repr__(self):
         return "{}\n".format(repr(self.criterion))
