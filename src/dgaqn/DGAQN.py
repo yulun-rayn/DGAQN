@@ -108,7 +108,7 @@ class DGAQN(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def select_state(self, states, candidates, batch_idx=None):
+    def select_action(self, states, candidates, batch_idx=None):
         if batch_idx is None:
             batch_idx = torch.zeros(len(candidates), dtype=torch.long)
         batch_idx = torch.LongTensor(batch_idx).to(self.device)
@@ -117,7 +117,7 @@ class DGAQN(nn.Module):
             if self.emb_model is not None:
                 states = self.emb_model.get_embedding(states, n_layers=self.emb_nb_shared, return_3d=self.use_3d, aggr=False)
                 candidates = self.emb_model.get_embedding(candidates, n_layers=self.emb_nb_shared, return_3d=self.use_3d, aggr=False)
-            states_next = self.criterion.select_state(candidates, batch_idx)
+            states_next, actions = self.criterion.select_state(candidates, batch_idx)
 
         if not isinstance(states, list):
             states = [states]
@@ -130,7 +130,7 @@ class DGAQN(nn.Module):
         states_next = [states_next[i].to_data_list() for i in range(1+self.use_3d)]
         states_next = list(zip(*states_next))
 
-        return states, candidates, states_next
+        return states, candidates, states_next, actions
 
     def get_inno_reward(self, states_next):
         if self.emb_model is not None:

@@ -86,8 +86,10 @@ class TargetGAQN(nn.Module):
     def select_action(self, candidates, batch_idx):
         q_candidates = self.critic.get_value(candidates)
         shifted_actions = self.actor.select_action(range(len(batch_idx)), q_candidates, batch_idx)
+        states_next = candidates[shifted_actions]
+        actions = shifted_actions - get_batch_shift(batch_idx)
 
-        return shifted_actions - get_batch_shift(batch_idx)
+        return states_next, actions.squeeze_().tolist()
 
     def select_value(self, candidates, batch_idx):
         old_q_candidates = self.critic_target.get_value(candidates)
