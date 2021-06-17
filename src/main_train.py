@@ -77,7 +77,7 @@ def main():
     args = read_args()
     #args.nb_procs = mp.cpu_count()
 
-    embed_model = None
+    embed_state = None
     if args.embed_model_url != '' or args.embed_model_path != '':
         embed_state = load_model(args.artifact_path,
                                     args.embed_model_url,

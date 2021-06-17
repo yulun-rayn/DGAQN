@@ -170,19 +170,6 @@ class DGAQN(nn.Module):
         return scores.squeeze().tolist()
 
     def update(self, memory, eps=1e-5):
-        # Monte Carlo estimate of rewards:
-        rewards = []
-        discounted_reward = 0
-        for reward, terminal in zip(reversed(memory.rewards), reversed(memory.terminals)):
-            if terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
-
-        # Normalizing the rewards:
-        rewards = torch.tensor(rewards).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + eps)
-
         # candidates batch
         batch_idx = []
         for i, cands in enumerate(memory.candidates):
@@ -196,6 +183,7 @@ class DGAQN(nn.Module):
                     for i in range(1+self.use_3d)]
         candidates = [Batch().from_data_list([item[i] for sublist in memory.candidates for item in sublist]).to(self.device)
                         for i in range(1+self.use_3d)]
+        rewards = torch.tensor(memory.rewards).to(self.device)
         discounts = self.gamma * ~torch.tensor(memory.terminals).to(self.device)
 
         old_qs_next, old_values = self.criterion.select_value(candidates, batch_idx)
