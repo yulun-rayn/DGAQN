@@ -23,6 +23,7 @@ def batched_argmax(values, batch, eps=5e-2):
 
     probs = (values == value_max).type(values.dtype)
     probs += eps / (count.type(values.dtype) - 1)
+    probs[torch.isinf(probs)] = 1
     return probs
 
 def batched_sample(probs, batch):
