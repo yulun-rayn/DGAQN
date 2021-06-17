@@ -102,6 +102,227 @@ class Result(object):
 #                   TRAINING LOOP                   #
 #####################################################
 
+def train_gpu_sync(args, embed_model, env):
+    lr = (args.dqn_lr, args.rnd_lr)
+    betas = (args.beta1, args.beta2)
+    eps = args.eps
+    print("lr:", lr, "beta:", betas, "eps:", eps)  # parameters for Adam optimizer
+
+    print('Creating %d processes' % args.nb_procs)
+    workers = [Worker(env, tasks, results, args.max_timesteps) for i in range(args.nb_procs)]
+    for w in workers:
+        w.start()
+
+    # logging variables
+    dt = datetime.now().strftime("%Y.%m.%d_%H:%M:%S")
+    writer = SummaryWriter(log_dir=os.path.join(args.artifact_path, 'runs/' + args.name + '_' + dt))
+    save_dir = os.path.join(args.artifact_path, 'saves/' + args.name + '_' + dt)
+    os.makedirs(save_dir, exist_ok=True)
+    initialize_logger(save_dir)
+
+    device = torch.device("cpu") if args.use_cpu else torch.device(
+        'cuda:' + str(args.gpu) if torch.cuda.is_available() else "cpu")
+
+    model = DGAQN(lr,
+                betas,
+                eps,
+                args.gamma,
+                args.eps_clip,
+                args.double_q,
+                args.k_epochs,
+                embed_model,
+                args.emb_nb_shared,
+                args.input_size,
+                args.nb_edge_types,
+                args.use_3d,
+                args.gnn_nb_layers,
+                args.gnn_nb_hidden,
+                args.enc_num_layers,
+                args.enc_num_hidden,
+                args.enc_num_output,
+                args.rnd_num_layers,
+                args.rnd_num_hidden,
+                args.rnd_num_output)
+    if args.running_model_path != '':
+        model = torch.load(args.running_model_path)
+    model.to_device(device)
+    logging.info(model)
+
+    sample_count = 0
+    episode_count = 0
+    save_counter = 0
+    log_counter = 0
+
+    avg_length = 0
+    running_reward = 0
+    running_main_reward = 0
+
+    memory = Memory()
+    memories = [Memory() for _ in range(args.nb_procs)]
+    rewbuffer_env = deque(maxlen=100)
+    molbuffer_env = deque(maxlen=1000)
+    # training loop
+    i_episode = 0
+    while i_episode < args.max_episodes:
+        logging.info("\n\ncollecting rollouts")
+        for i in range(args.nb_procs):
+            tasks.put((i, None, True))
+        tasks.join()
+        # unpack results
+        states = [None] * args.nb_procs
+        done_idx = []
+        notdone_idx, candidates, batch_idx = [], [], []
+        for i in range(args.nb_procs):
+            index, state, cands, done = results.get()
+
+            states[index] = state
+
+            notdone_idx.append(index)
+            candidates.append(cands)
+            batch_idx.extend([index] * len(cands))
+        while True:
+            # action selections (for not done)
+            if len(notdone_idx) > 0:
+                states_emb, candidates_emb, states_next_emb, actions = model.select_action(
+                    mols_to_pyg_batch([Chem.MolFromSmiles(states[idx])
+                        for idx in notdone_idx], model.emb_3d, device=model.device),
+                    mols_to_pyg_batch([Chem.MolFromSmiles(item) 
+                        for sublist in candidates for item in sublist], model.emb_3d, device=model.device),
+                    batch_idx)
+                if not isinstance(actions, list):
+                    actions = [actions]
+            else:
+                if sample_count >= args.update_timesteps:
+                    break
+
+            for i, idx in enumerate(notdone_idx):
+                tasks.put((idx, candidates[i][actions[i]], False))
+                cands = [data for j, data in enumerate(candidates_emb) if batch_idx[j] == idx]
+
+                memories[idx].states.append(states_emb[i])
+                memories[idx].candidates.append(cands)
+                memories[idx].states_next.append(states_next_emb[i])
+            for idx in done_idx:
+                if sample_count >= args.update_timesteps:
+                    tasks.put((None, None, True))
+                else:
+                    tasks.put((idx, None, True))
+            tasks.join()
+            # unpack results
+            states = [None] * args.nb_procs
+            new_done_idx = []
+            new_notdone_idx, candidates, batch_idx = [], [], []
+            for i in range(args.nb_procs):
+                index, state, cands, done = results.get()
+
+                if index is not None:
+                    states[index] = state
+                if done:
+                    new_done_idx.append(index)
+                else:
+                    new_notdone_idx.append(index)
+                    candidates.append(cands)
+                    batch_idx.extend([index] * len(cands))
+            # get final rewards (for previously not done but now done)
+            nowdone_idx = [idx for idx in notdone_idx if idx in new_done_idx]
+            stillnotdone_idx = [idx for idx in notdone_idx if idx in new_notdone_idx]
+            if len(nowdone_idx) > 0:
+                main_rewards = get_main_reward(
+                    [Chem.MolFromSmiles(states[idx]) for idx in nowdone_idx], reward_type=args.reward_type, args=args)
+                if not isinstance(main_rewards, list):
+                    main_rewards = [main_rewards]
+
+            for i, idx in enumerate(nowdone_idx):
+                main_reward = main_rewards[i]
+
+                i_episode += 1
+                running_reward += main_reward
+                running_main_reward += main_reward
+                writer.add_scalar("EpMainRew", main_reward, i_episode - 1)
+                rewbuffer_env.append(main_reward)
+                molbuffer_env.append((states[idx], main_reward))
+                writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode - 1)
+
+                memories[idx].rewards.append(main_reward)
+                memories[idx].terminals.append(True)
+            for idx in stillnotdone_idx:
+                running_reward += 0
+
+                memories[idx].rewards.append(0)
+                memories[idx].terminals.append(False)
+            # get innovation rewards
+            if (args.iota > 0 and 
+                i_episode > args.innovation_reward_episode_delay and 
+                i_episode < args.innovation_reward_episode_cutoff):
+                if len(notdone_idx) > 0:
+                    inno_rewards = model.get_inno_reward(
+                        mols_to_pyg_batch([Chem.MolFromSmiles(states[idx]) 
+                            for idx in notdone_idx], model.emb_3d, device=model.device))
+                    if not isinstance(inno_rewards, list):
+                        inno_rewards = [inno_rewards]
+
+                for i, idx in enumerate(notdone_idx):
+                    inno_reward = args.iota * inno_rewards[i]
+
+                    running_reward += inno_reward
+
+                    memories[idx].rewards[-1] += inno_reward
+
+            sample_count += len(notdone_idx)
+            avg_length += len(notdone_idx)
+            episode_count += len(nowdone_idx)
+
+            done_idx = new_done_idx
+            notdone_idx = new_notdone_idx
+
+        for m in memories:
+            memory.extend(m)
+            m.clear()
+        # update model
+        logging.info("\nupdating model @ episode %d..." % i_episode)
+        model.update(memory)
+        memory.clear()
+
+        save_counter += episode_count
+        log_counter += episode_count
+
+        # stop training if avg_reward > solved_reward
+        if np.mean(rewbuffer_env) > args.solved_reward:
+            logging.info("########## Solved! ##########")
+            torch.save(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pth'.format('test')))
+            break
+
+        # save every 500 episodes
+        if save_counter >= args.save_interval:
+            torch.save(model, os.path.join(save_dir, '{:05d}_dgaqn.pth'.format(i_episode)))
+            deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgaqn.csv'))
+            save_counter = 0
+
+        # save running model
+        torch.save(model, os.path.join(save_dir, 'running_dgaqn.pth'))
+
+        if log_counter >= args.log_interval:
+            avg_length = int(avg_length / log_counter)
+            running_reward = running_reward / log_counter
+            running_main_reward = running_main_reward / log_counter
+
+            logging.info('Episode {} \t Avg length: {} \t Avg reward: {:5.3f} \t Avg main reward: {:5.3f}'.format(
+                i_episode, avg_length, running_reward, running_main_reward))
+            running_reward = 0
+            running_main_reward = 0
+            avg_length = 0
+            log_counter = 0
+
+        episode_count = 0
+        sample_count = 0
+
+    close_logger()
+    writer.close()
+    # Add a poison pill for each process
+    for i in range(args.nb_procs):
+        tasks.put(None)
+    tasks.join()
+
 def train_serial(args, embed_model, env):
     lr = (args.dqn_lr, args.rnd_lr)
     betas = (args.beta1, args.beta2)
@@ -208,16 +429,16 @@ def train_serial(args, embed_model, env):
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
             logging.info("########## Solved! ##########")
-            torch.save(model, os.path.join(save_dir, 'DGAPN_continuous_solved_{}.pth'.format('test')))
+            torch.save(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pth'.format('test')))
             break
 
         # save every save_interval episodes
         if (i_episode-1) % args.save_interval == 0:
-            torch.save(model, os.path.join(save_dir, '{:05d}_dgapn.pth'.format(i_episode)))
-            deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgapn.csv'))
+            torch.save(model, os.path.join(save_dir, '{:05d}_dgaqn.pth'.format(i_episode)))
+            deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgaqn.csv'))
 
         # save running model
-        torch.save(model, os.path.join(save_dir, 'running_dgapn.pth'))
+        torch.save(model, os.path.join(save_dir, 'running_dgaqn.pth'))
 
         # logging
         if i_episode % args.log_interval == 0:
