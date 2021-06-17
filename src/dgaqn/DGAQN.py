@@ -179,5 +179,8 @@ class DGAQN(nn.Module):
             if (i%10)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))
 
+        # Copy new weights into target network:
+        self.criterion.update_target()
+
     def __repr__(self):
         return "{}\n".format(repr(self.criterion))

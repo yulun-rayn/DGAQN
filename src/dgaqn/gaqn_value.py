@@ -109,6 +109,9 @@ class TargetGAQN(nn.Module):
 
         return loss.item()
 
+    def update_target(self):
+        self.critic_target.load_state_dict(self.critic.state_dict())
+
 
 class GAQN_Critic(nn.Module):
     def __init__(self,
