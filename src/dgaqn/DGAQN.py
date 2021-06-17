@@ -56,13 +56,13 @@ class DGAQN(nn.Module):
                  use_3d,
                  gnn_nb_layers,
                  gnn_nb_hidden,
-                 enc_nb_layers,
-                 enc_nb_hidden,
-                 enc_nb_output,
+                 val_nb_layers,
+                 val_nb_hidden,
                  rnd_nb_layers,
                  rnd_nb_hidden,
                  rnd_nb_output):
         super(DGAQN, self).__init__()
+        self.gamma = gamma
         self.k_epochs = k_epochs
         self.use_3d = use_3d
         self.emb_model = emb_model
@@ -80,9 +80,8 @@ class DGAQN(nn.Module):
                                     use_3d,
                                     gnn_nb_layers,
                                     gnn_nb_hidden,
-                                    enc_nb_layers,
-                                    enc_nb_hidden,
-                                    enc_nb_output)
+                                    val_nb_layers,
+                                    val_nb_hidden)
 
         self.explore_critic = RNDistillation(lr[1],
                                              betas,
@@ -117,20 +116,17 @@ class DGAQN(nn.Module):
             if self.emb_model is not None:
                 states = self.emb_model.get_embedding(states, n_layers=self.emb_nb_shared, return_3d=self.use_3d, aggr=False)
                 candidates = self.emb_model.get_embedding(candidates, n_layers=self.emb_nb_shared, return_3d=self.use_3d, aggr=False)
-            states_next, actions = self.criterion.select_state(candidates, batch_idx)
+            actions = self.criterion.select_action(candidates, batch_idx)
 
         if not isinstance(states, list):
             states = [states]
             candidates = [candidates]
-            states_next = [states_next]
         states = [states[i].to_data_list() for i in range(1+self.use_3d)]
         states = list(zip(*states))
         candidates = [candidates[i].to_data_list() for i in range(1+self.use_3d)]
         candidates = list(zip(*candidates))
-        states_next = [states_next[i].to_data_list() for i in range(1+self.use_3d)]
-        states_next = list(zip(*states_next))
 
-        return states, candidates, states_next, actions
+        return states, candidates, actions
 
     def get_inno_reward(self, states_next):
         if self.emb_model is not None:
@@ -166,7 +162,7 @@ class DGAQN(nn.Module):
                     for i in range(1+self.use_3d)]
         candidates = [Batch().from_data_list([item[i] for sublist in memory.candidates for item in sublist]).to(self.device)
                         for i in range(1+self.use_3d)]
-        terminals = torch.tensor(memory.terminals).to(self.device)
+        discounts = self.gamma * ~torch.tensor(memory.terminals).to(self.device)
 
         old_qs_next, old_values = self.criterion.select_value(candidates, batch_idx)
 
@@ -174,7 +170,7 @@ class DGAQN(nn.Module):
         logging.info("Optimizing...")
 
         for i in range(self.k_epochs):
-            loss = self.criterion.update(states, rewards, terminals, old_qs_next, old_values, batch_idx)
+            loss = self.criterion.update(states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx)
             rnd_loss = self.explore_critic.update(states_next)
             if (i%10)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))

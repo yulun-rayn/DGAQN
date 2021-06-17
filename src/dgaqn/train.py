@@ -137,9 +137,8 @@ def train_gpu_sync(args, embed_model, env):
                 args.use_3d,
                 args.gnn_nb_layers,
                 args.gnn_nb_hidden,
-                args.enc_num_layers,
-                args.enc_num_hidden,
-                args.enc_num_output,
+                args.val_num_layers,
+                args.val_num_hidden,
                 args.rnd_num_layers,
                 args.rnd_num_hidden,
                 args.rnd_num_output)
@@ -183,7 +182,7 @@ def train_gpu_sync(args, embed_model, env):
         while True:
             # action selections (for not done)
             if len(notdone_idx) > 0:
-                states_emb, candidates_emb, states_next_emb, actions = model.select_action(
+                states_emb, candidates_emb, actions = model.select_action(
                     mols_to_pyg_batch([Chem.MolFromSmiles(states[idx])
                         for idx in notdone_idx], model.emb_3d, device=model.device),
                     mols_to_pyg_batch([Chem.MolFromSmiles(item) 
@@ -201,7 +200,7 @@ def train_gpu_sync(args, embed_model, env):
 
                 memories[idx].states.append(states_emb[i])
                 memories[idx].candidates.append(cands)
-                memories[idx].states_next.append(states_next_emb[i])
+                memories[idx].states_next.append(cands[actions[i]])
             for idx in done_idx:
                 if sample_count >= args.update_timesteps:
                     tasks.put((None, None, True))
@@ -353,9 +352,8 @@ def train_serial(args, embed_model, env):
                 args.use_3d,
                 args.gnn_nb_layers,
                 args.gnn_nb_hidden,
-                args.enc_num_layers,
-                args.enc_num_hidden,
-                args.enc_num_output,
+                args.val_num_layers,
+                args.val_num_hidden,
                 args.rnd_num_layers,
                 args.rnd_num_hidden,
                 args.rnd_num_output)
@@ -380,12 +378,12 @@ def train_serial(args, embed_model, env):
         for t in range(args.max_timesteps):
             time_step += 1
             # Running policy:
-            state_emb, candidates_emb, states_next_emb, action = model.select_state(
+            state_emb, candidates_emb, action = model.select_state(
                 mols_to_pyg_batch(state, model.emb_3d, device=model.device),
                 mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
             memory.states.append(state_emb[0])
             memory.candidates.append(candidates_emb)
-            memory.states_next.append(states_next_emb[0])
+            memory.states_next.append(candidates_emb[action])
 
             state, candidates, done = env.step(action)
 

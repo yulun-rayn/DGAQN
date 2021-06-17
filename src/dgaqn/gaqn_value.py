@@ -68,7 +68,7 @@ class TargetGAQN(nn.Module):
                                   gnn_nb_hidden,
                                   mlp_nb_layers,
                                   mlp_nb_hidden)
-        self.optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr[1], betas=betas, eps=eps)
+        self.optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr, betas=betas, eps=eps)
 
         self.critic_target = GAQN_Critic(gamma,
                                             input_dim,
@@ -85,11 +85,11 @@ class TargetGAQN(nn.Module):
 
     def select_action(self, candidates, batch_idx):
         values = self.critic.get_value(candidates)
-        shifted_actions = self.actor.select_action(range(len(batch_idx)), values, batch_idx)
-        states_next = candidates[shifted_actions]
+        shifted_actions = self.actor.select_action(
+            torch.arange(len(batch_idx), device=batch_idx.device), values, batch_idx)
         actions = shifted_actions - get_batch_shift(batch_idx)
 
-        return states_next, actions.squeeze_().tolist()
+        return actions.squeeze_().tolist()
 
     def select_value(self, candidates, batch_idx):
         values = self.critic_target.get_value(candidates)
@@ -100,13 +100,13 @@ class TargetGAQN(nn.Module):
     def get_value(self, candidates):
         return self.critic_target.get_value(candidates)
 
-    def update(self, states, candidates, rewards, terminals, old_qs_next, old_values, batch_idx):
+    def update(self, states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx):
         if self.double_q:
             values = self.critic.get_value(candidates)
             qs_next = self.actor.select_action(old_values, values, batch_idx)
         else:
             qs_next = old_qs_next
-        loss = self.critic.loss(states, rewards, qs_next, terminals)
+        loss = self.critic.loss(states, rewards, qs_next, discounts)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -126,8 +126,8 @@ class GAQN_Critic(nn.Module):
                  use_3d,
                  gnn_nb_layers,
                  gnn_nb_hidden,
-                 enc_nb_layers,
-                 enc_nb_hidden):
+                 val_nb_layers,
+                 val_nb_hidden):
         super(GAQN_Critic, self).__init__()
         self.gamma = gamma
 
@@ -138,9 +138,9 @@ class GAQN_Critic(nn.Module):
             in_dim = gnn_nb_hidden
 
         layers = []
-        for _ in range(enc_nb_layers):
-            layers.append(nn.Linear(in_dim, enc_nb_hidden))
-            in_dim = enc_nb_hidden
+        for _ in range(val_nb_layers):
+            layers.append(nn.Linear(in_dim, val_nb_hidden))
+            in_dim = val_nb_hidden
 
         self.layers = nn.ModuleList(layers)
         self.final_layer = nn.Linear(in_dim, 1)
@@ -159,9 +159,9 @@ class GAQN_Critic(nn.Module):
             values = self(candidates)
         return values.detach()
 
-    def loss(self, states, rewards, qs_next, terminals):
+    def loss(self, states, rewards, qs_next, discounts):
         qs = self(states)
-        targets = rewards + self.gamma * qs_next * (1 - terminals)
+        targets = rewards + discounts * qs_next
         loss = self.MseLoss(qs, targets)
 
         return loss
