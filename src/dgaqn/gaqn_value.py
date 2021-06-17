@@ -143,8 +143,8 @@ class GAQN_Critic(nn.Module):
 
         self.MseLoss = nn.MSELoss()
 
-    def forward(self, states):
-        X = self.gnn.get_embedding(states, detach=False)
+    def forward(self, candidates):
+        X = self.gnn.get_embedding(candidates, detach=False)
         for i, l in enumerate(self.layers):
             X = self.act(l(X))
         return self.final_layer(X).squeeze(1)
