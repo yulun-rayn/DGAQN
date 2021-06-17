@@ -84,8 +84,8 @@ class TargetGAQN(nn.Module):
         raise NotImplementedError
 
     def select_action(self, candidates, batch_idx):
-        q_candidates = self.critic.get_value(candidates)
-        shifted_actions = self.actor.select_action(range(len(batch_idx)), q_candidates, batch_idx)
+        values = self.critic.get_value(candidates)
+        shifted_actions = self.actor.select_action(range(len(batch_idx)), values, batch_idx)
         states_next = candidates[shifted_actions]
         actions = shifted_actions - get_batch_shift(batch_idx)
 
@@ -156,8 +156,8 @@ class GAQN_Critic(nn.Module):
 
     def get_value(self, candidates):
         with torch.autograd.no_grad():
-            q_candidates = self(candidates)
-        return q_candidates.detach()
+            values = self(candidates)
+        return values.detach()
 
     def loss(self, states, rewards, qs_next, terminals):
         qs = self(states)
