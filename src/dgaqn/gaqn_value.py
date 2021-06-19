@@ -98,9 +98,6 @@ class TargetGAQN(nn.Module):
 
         return qs_next, values
 
-    def get_value(self, candidates):
-        return self.critic_target.get_value(candidates)
-
     def update(self, states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx):
         if self.double_q:
             values = self.critic.get_value(candidates)

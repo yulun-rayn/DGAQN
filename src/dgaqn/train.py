@@ -315,17 +315,17 @@ def train_gpu_sync(args, env):
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
             logging.info("########## Solved! ##########")
-            save_DGAQN(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pth'.format('test')))
+            save_DGAQN(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pt'.format('test')))
             break
 
         # save every 500 episodes
         if save_counter >= args.save_interval:
-            save_DGAQN(model, os.path.join(save_dir, '{:05d}_dgaqn.pth'.format(i_episode)))
+            save_DGAQN(model, os.path.join(save_dir, '{:05d}_dgaqn.pt'.format(i_episode)))
             deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgaqn.csv'))
             save_counter = 0
 
         # save running model
-        save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pth'))
+        save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pt'))
 
         if log_counter >= args.log_interval:
             avg_length = int(avg_length / log_counter)
@@ -455,16 +455,16 @@ def train_serial(args, env):
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
             logging.info("########## Solved! ##########")
-            save_DGAQN(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pth'.format('test')))
+            save_DGAQN(model, os.path.join(save_dir, 'DGAQN_continuous_solved_{}.pt'.format('test')))
             break
 
         # save every save_interval episodes
         if (i_episode-1) % args.save_interval == 0:
-            save_DGAQN(model, os.path.join(save_dir, '{:05d}_dgaqn.pth'.format(i_episode)))
+            save_DGAQN(model, os.path.join(save_dir, '{:05d}_dgaqn.pt'.format(i_episode)))
             deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgaqn.csv'))
 
         # save running model
-        save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pth'))
+        save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pt'))
 
         # logging
         if i_episode % args.log_interval == 0:

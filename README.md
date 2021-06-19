@@ -31,8 +31,6 @@ To evaluate molecular docking scores, the docking program [AutoDock-GPU](https:/
 
 [The provided resources](src/reward/adtgpu/receptor) are for docking in the catalytic site of NSP15. If docking against a new protein is desired, several input receptor files need to be generated, see [the sub-directory](src/reward/adtgpu) for more details.
 
-For optimizing logP, penalized logP, etc., this step is not necessary.
-
 
 ## Training
 
