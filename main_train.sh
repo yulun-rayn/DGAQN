@@ -7,10 +7,10 @@ DATA=$(cd -P -- "$(dirname -- "$0")" && pwd -P)
 
 PYARGS=""
 PYARGS="$PYARGS --name DGAQN_parallel_8_noemb_3d_iota"
-PYARGS="$PYARGS --run_id 000"
+PYARGS="$PYARGS --run_id 001"
 PYARGS="$PYARGS --nb_procs 8"
 # PYARGS="$PYARGS --use_cpu"
-PYARGS="$PYARGS --gpu 0"
+PYARGS="$PYARGS --gpu 1"
 PYARGS="$PYARGS --artifact_path $DATA/artifact/dgaqn"
 PYARGS="$PYARGS --data_path $DATA/src/dataset"
 PYARGS="$PYARGS --warm_start_dataset NSP15_6W01_A_3_H.negonly_unique_30k.csv"

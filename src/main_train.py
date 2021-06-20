@@ -39,12 +39,12 @@ def read_args():
     add_arg('--solved_reward', type=float, default=100)     # stop training if avg_reward > solved_reward
     add_arg('--max_episodes', type=int, default=50000)      # max training episodes
     add_arg('--max_timesteps', type=int, default=12)        # max timesteps in one episode
-    add_arg('--update_timesteps', type=int, default=200)    # update policy every n timesteps
-    add_arg('--k_epochs', type=int, default=30)             # update policy for K epochs
+    add_arg('--update_timesteps', type=int, default=200)    # update value network every n timesteps
+    add_arg('--k_epochs', type=int, default=50)             # update value network for K epochs
     add_arg('--double_q', action='store_true')              # use double Q
     add_arg('--eps_clip', type=float, default=0.2)          # clip parameter for PPO
     add_arg('--gamma', type=float, default=0.99)            # discount factor
-    add_arg('--dqn_lr', type=float, default=1e-4)           # learning rate for value network
+    add_arg('--dqn_lr', type=float, default=5e-4)           # learning rate for value network
     add_arg('--rnd_lr', type=float, default=2e-3)           # learning rate for random network
     add_arg('--beta1', type=float, default=0.9)             # beta1 for Adam optimizer
     add_arg('--beta2', type=float, default=0.999)           # beta2 for Adam optimizer
@@ -88,13 +88,13 @@ def main():
             assert not args.use_3d
         args.input_size = embed_state['nb_hidden']
         args.nb_edge_types = embed_state['nb_edge_types']
-    args.embed_state = embed_state
 
     env = CReM_Env(args.data_path, args.warm_start_dataset, mode='mol')
     #ob, _, _ = env.reset()
     #args.input_size = ob.x.shape[1]
 
     print("====args====\n", args)
+    args.embed_state = embed_state
 
     if args.nb_procs > 1:
         train_gpu_sync(args, env)
