@@ -28,6 +28,7 @@ class Memory:
         self.states = []        # state representations: pyg graph
         self.candidates = []    # next state (candidate) representations: pyg graph
         self.states_next = []   # next state (chosen) representations: pyg graph
+        self.actions = []       # action index: long
         self.rewards = []       # rewards: float
         self.terminals = []     # trajectory status: logical
 
@@ -35,6 +36,7 @@ class Memory:
         self.states.extend(memory.states)
         self.candidates.extend(memory.candidates)
         self.states_next.extend(memory.states_next)
+        self.actions.extend(memory.actions)
         self.rewards.extend(memory.rewards)
         self.terminals.extend(memory.terminals)
 
@@ -42,6 +44,7 @@ class Memory:
         del self.states[:]
         del self.candidates[:]
         del self.states_next[:]
+        del self.actions[:]
         del self.rewards[:]
         del self.terminals[:]
 
@@ -228,6 +231,7 @@ def train_gpu_sync(args, env):
                 memories[idx].states.append(states_emb[i])
                 memories[idx].candidates.append(cands)
                 memories[idx].states_next.append(cands[actions[i]])
+                memories[idx].actions.append(actions[i])
             for idx in done_idx:
                 if sample_count >= args.update_timesteps:
                     tasks.put((None, None, True))
@@ -401,17 +405,20 @@ def train_serial(args, env):
     molbuffer_env = deque(maxlen=1000)
     # training loop
     for i_episode in range(1, args.max_episodes+1):
+        if time_step == 0:
+            logging.info("\n\ncollecting rollouts")
         state, candidates, done = env.reset()
 
         for t in range(args.max_timesteps):
             time_step += 1
             # Running policy:
-            state_emb, candidates_emb, action = model.select_state(
+            state_emb, candidates_emb, action = model.select_action(
                 mols_to_pyg_batch(state, model.emb_3d, device=model.device),
                 mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
             memory.states.append(state_emb[0])
             memory.candidates.append(candidates_emb)
             memory.states_next.append(candidates_emb[action])
+            memory.actions.append(action)
 
             state, candidates, done = env.step(action)
 
@@ -422,6 +429,7 @@ def train_serial(args, env):
                 main_reward = get_main_reward(state, reward_type=args.reward_type, args=args)[0]
                 reward = main_reward
                 running_main_reward += main_reward
+                done = True
 
             if (args.iota > 0 and 
                 i_episode > args.innovation_reward_episode_delay and 

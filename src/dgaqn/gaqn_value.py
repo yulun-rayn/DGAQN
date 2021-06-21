@@ -92,11 +92,11 @@ class TargetGAQN(nn.Module):
 
         return actions.squeeze_().tolist()
 
-    def select_value(self, candidates, batch_idx):
+    def select_value(self, candidates, actions, batch_idx):
         values = self.critic_target.get_value(candidates)
-        qs_next = self.actor.select_action(values, values, batch_idx)
+        shifted_actions = actions + get_batch_shift(batch_idx)
 
-        return qs_next, values
+        return values[shifted_actions], values
 
     def update(self, states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx):
         if self.double_q:

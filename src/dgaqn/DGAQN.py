@@ -1,5 +1,4 @@
 import logging
-from tarfile import TarError
 
 import torch
 import torch.nn as nn
@@ -183,10 +182,11 @@ class DGAQN(nn.Module):
                     for i in range(1+self.use_3d)]
         candidates = [Batch().from_data_list([item[i] for sublist in memory.candidates for item in sublist]).to(self.device)
                         for i in range(1+self.use_3d)]
+        actions = torch.tensor(memory.actions).to(self.device)
         rewards = torch.tensor(memory.rewards).to(self.device)
         discounts = self.gamma * ~torch.tensor(memory.terminals).to(self.device)
 
-        old_qs_next, old_values = self.criterion.select_value(candidates, batch_idx)
+        old_qs_next, old_values = self.criterion.select_value(candidates, actions, batch_idx)
 
         # Optimize value for k epochs:
         logging.info("Optimizing...")

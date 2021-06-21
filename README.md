@@ -1,4 +1,4 @@
-# Distilled Graph Attention Q-Network
+# Distilled Graph Attention Q-Network (under development)
 
 This repository is the official implementation of Distilled Graph Attention Q-Network (DGAQN). The implementation of Spatial Graph Attention Network (sGAT) submodule can be found [here](https://github.com/yulun-rayn/sGAT).
 
