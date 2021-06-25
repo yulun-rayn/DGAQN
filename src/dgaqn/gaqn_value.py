@@ -129,16 +129,27 @@ class GAQN_Critic(nn.Module):
         super(GAQN_Critic, self).__init__()
         self.gamma = gamma
 
+        if not isinstance(gnn_nb_hidden, list):
+            gnn_nb_hidden = [gnn_nb_hidden] * gnn_nb_layers
+        else:
+            assert len(gnn_nb_hidden) == gnn_nb_layers
+        if not isinstance(val_nb_hidden, list):
+            val_nb_hidden = [val_nb_hidden] * val_nb_layers
+        else:
+            assert len(val_nb_hidden) == val_nb_layers
+
+        # gnn encoder
         self.gnn = sGAT(input_dim, nb_edge_types, gnn_nb_hidden, gnn_nb_layers, use_3d=use_3d)
         if gnn_nb_layers == 0:
             in_dim = input_dim
         else:
-            in_dim = gnn_nb_hidden
+            in_dim = gnn_nb_hidden[-1]
 
+        # mlp encoder
         layers = []
-        for _ in range(val_nb_layers):
-            layers.append(nn.Linear(in_dim, val_nb_hidden))
-            in_dim = val_nb_hidden
+        for i in range(val_nb_layers):
+            layers.append(nn.Linear(in_dim, val_nb_hidden[i]))
+            in_dim = val_nb_hidden[i]
 
         self.layers = nn.ModuleList(layers)
         self.final_layer = nn.Linear(in_dim, 1)
