@@ -42,7 +42,7 @@ def read_args():
     add_arg('--update_timesteps', type=int, default=200)    # update value network every n timesteps
     add_arg('--k_epochs', type=int, default=50)             # update value network for K epochs
     add_arg('--double_q', action='store_true')              # use double Q
-    add_arg('--eps_clip', type=float, default=0.2)          # clip parameter for PPO
+    add_arg('--eps_clip', type=float, default=0.05)         # parameter for epsilon greedy
     add_arg('--gamma', type=float, default=0.99)            # discount factor
     add_arg('--dqn_lr', type=float, default=5e-4)           # learning rate for value network
     add_arg('--rnd_lr', type=float, default=2e-3)           # learning rate for random network
