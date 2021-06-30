@@ -28,7 +28,6 @@ class Memory:
         self.states = []        # state representations: pyg graph
         self.candidates = []    # next state (candidate) representations: pyg graph
         self.states_next = []   # next state (chosen) representations: pyg graph
-        self.actions = []       # action index: long
         self.rewards = []       # rewards: float
         self.terminals = []     # trajectory status: logical
 
@@ -36,7 +35,6 @@ class Memory:
         self.states.extend(memory.states)
         self.candidates.extend(memory.candidates)
         self.states_next.extend(memory.states_next)
-        self.actions.extend(memory.actions)
         self.rewards.extend(memory.rewards)
         self.terminals.extend(memory.terminals)
 
@@ -44,7 +42,6 @@ class Memory:
         del self.states[:]
         del self.candidates[:]
         del self.states_next[:]
-        del self.actions[:]
         del self.rewards[:]
         del self.terminals[:]
 
@@ -231,7 +228,6 @@ def train_gpu_sync(args, env):
                 memories[idx].states.append(states_emb[i])
                 memories[idx].candidates.append(cands)
                 memories[idx].states_next.append(cands[actions[i]])
-                memories[idx].actions.append(actions[i])
             for idx in done_idx:
                 if sample_count >= args.update_timesteps:
                     tasks.put((None, None, True))
@@ -418,7 +414,6 @@ def train_serial(args, env):
             memory.states.append(state_emb[0])
             memory.candidates.append(candidates_emb)
             memory.states_next.append(candidates_emb[action])
-            memory.actions.append(action)
 
             state, candidates, done = env.step(action)
 
