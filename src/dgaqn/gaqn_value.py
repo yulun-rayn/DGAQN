@@ -137,16 +137,17 @@ class GAQN_Critic(nn.Module):
             val_nb_hidden = [val_nb_hidden] * val_nb_layers
         else:
             assert len(val_nb_hidden) == val_nb_layers
-            assert val_nb_layers > 0
 
-        # gnn encoder (w/ 1 mlp layer)
-        self.gnn = sGAT(input_dim, nb_edge_types, gnn_nb_hidden, gnn_nb_layers, 
-                        output_dim=val_nb_hidden[0], use_3d=use_3d)
-        in_dim = val_nb_hidden[0]
+        # gnn encoder
+        self.gnn = sGAT(input_dim, nb_edge_types, gnn_nb_hidden, gnn_nb_layers, use_3d=use_3d)
+        if gnn_nb_layers == 0:
+            in_dim = input_dim
+        else:
+            in_dim = gnn_nb_hidden[-1]
 
         # mlp encoder
         layers = []
-        for i in range(1, val_nb_layers):
+        for i in range(val_nb_layers):
             layers.append(nn.Linear(in_dim, val_nb_hidden[i]))
             in_dim = val_nb_hidden[i]
 
@@ -157,7 +158,7 @@ class GAQN_Critic(nn.Module):
         self.MseLoss = nn.MSELoss()
 
     def forward(self, candidates):
-        X = self.act(self.gnn(candidates))
+        X = self.gnn.get_embedding(candidates, detach=False)
         for l in self.layers:
             X = self.act(l(X))
         return self.final_layer(X).squeeze(1)
