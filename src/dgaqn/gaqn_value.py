@@ -85,26 +85,24 @@ class TargetGAQN(nn.Module):
         raise NotImplementedError
 
     def select_action(self, candidates, batch_idx):
-        values = self.critic.get_value(candidates)
+        Qs = self.critic.get_value(candidates)
         shifted_actions = self.actor.select_action(
-            torch.arange(len(batch_idx), device=batch_idx.device), values, batch_idx)
+            torch.arange(len(batch_idx), device=batch_idx.device), Qs, batch_idx)
         actions = shifted_actions - get_batch_shift(batch_idx)
 
         return actions.squeeze_().tolist()
 
     def select_value(self, candidates, batch_idx):
-        values = self.critic_target.get_value(candidates)
-        qs = self.actor.select_action(values, values, batch_idx, eps=0)
+        Qs = self.critic_target.get_value(candidates)
+        values = self.actor.select_action(Qs, Qs, batch_idx, eps=0)
 
-        return qs, values
+        return values, Qs
 
-    def update(self, states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx):
+    def update(self, states, candidates, rewards, discounts, old_values, old_Qs, batch_idx):
         if self.double_q:
-            values = self.critic.get_value(candidates)
-            qs_next = self.actor.select_action(old_values, values, batch_idx, eps=0)
-        else:
-            qs_next = old_qs_next
-        loss = self.critic.loss(states, rewards, qs_next, discounts)
+            Qs = self.critic.get_value(candidates)
+            old_values = self.actor.select_action(old_Qs, Qs, batch_idx, eps=0)
+        loss = self.critic.loss(states, rewards, old_values, discounts)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -168,10 +166,10 @@ class GAQN_Critic(nn.Module):
             values = self(candidates)
         return values.detach()
 
-    def loss(self, states, rewards, qs_next, discounts):
-        qs = self(states)
-        targets = rewards + discounts * qs_next
-        loss = self.MseLoss(qs, targets)
+    def loss(self, states, rewards, old_values, discounts):
+        values = self(states)
+        targets = rewards + discounts * old_values
+        loss = self.MseLoss(values, targets)
 
         return loss
 

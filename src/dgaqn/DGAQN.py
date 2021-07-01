@@ -185,13 +185,13 @@ class DGAQN(nn.Module):
         rewards = torch.tensor(memory.rewards).to(self.device)
         discounts = self.gamma * ~torch.tensor(memory.terminals).to(self.device)
 
-        old_qs_next, old_values = self.criterion.select_value(candidates, batch_idx)
+        old_values, old_Qs = self.criterion.select_value(candidates, batch_idx)
 
         # Optimize value for k epochs:
         logging.info("Optimizing...")
 
         for i in range(1, self.k_epochs+1):
-            loss = self.criterion.update(states, candidates, rewards, discounts, old_qs_next, old_values, batch_idx)
+            loss = self.criterion.update(states, candidates, rewards, discounts, old_values, old_Qs, batch_idx)
             rnd_loss = self.explore_critic.update(states_next)
             if (i%10)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))

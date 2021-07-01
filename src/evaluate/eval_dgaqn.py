@@ -29,10 +29,6 @@ def dgaqn_rollout(save_path,
     smile_best = Chem.MolToSmiles(mol, isomericSmiles=False)
     emb_model_3d = model.emb_model.use_3d if model.emb_model is not None else model.use_3d
 
-    g = mols_to_pyg_batch(mol, emb_model_3d, device=device)
-    if model.emb_model is not None:
-        with torch.autograd.no_grad():
-            g = model.emb_model.get_embedding(g, n_layers=model.emb_nb_shared, return_3d=model.use_3d, aggr=False)
     new_rew = get_main_reward(mol, reward_type, args=args)[0]
     start_rew = new_rew
     best_rew = new_rew
@@ -72,11 +68,6 @@ def dgaqn_rollout(save_path,
         except Exception as e:
             print(e)
             break
-
-        g = mols_to_pyg_batch(mol, emb_model_3d, device=device)
-        if model.emb_model is not None:
-            with torch.autograd.no_grad():
-                g = model.emb_model.get_embedding(g, n_layers=model.emb_nb_shared, return_3d=model.use_3d, aggr=False)
 
         if new_rew > best_rew:
             smile_best = Chem.MolToSmiles(mol, isomericSmiles=False)
