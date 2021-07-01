@@ -44,11 +44,11 @@ def dgaqn_rollout(save_path,
         # next_rewards = get_main_reward(mol_candidates, reward_type, args=args)
 
         with torch.autograd.no_grad():
-            values = model.criterion.critic(g_candidates)
-        values = values.cpu().numpy()
+            Qs = model.criterion.critic(g_candidates)
+        Qs = Qs.cpu().numpy()
 
-        max_action = np.argmax(values)
-        min_action = np.argmin(values)
+        max_action = np.argmax(Qs)
+        min_action = np.argmin(Qs)
         # print(next_rewards[max_action], next_rewards[min_action])
         # print(probs.shape, next_rewards.shape)
         # p = probs.unsqueeze(1)
