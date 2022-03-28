@@ -29,7 +29,7 @@ def read_args():
     add_arg('--model_url', default='')
     add_arg('--model_path', default='')
 
-    add_arg('--reward_type', type=str, default='plogp', help='plogp;logp;dock')
+    add_arg('--reward_type', type=str, default='plogp', help='logp;plogp;dock')
 
     add_arg('--nb_sample_crem', type=int, default=128)
 
@@ -44,7 +44,7 @@ def read_args():
     return parser.parse_args()
 
 def main():
-    args = read_args().parse_args()
+    args = read_args()
     print("====args====\n", args)
 
     env = CReM_Env(args.data_path,

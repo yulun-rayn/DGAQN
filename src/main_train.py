@@ -1,11 +1,21 @@
 import os
 import argparse
+import resource
 
 import torch
-import torch.multiprocessing as mp
+import multiprocessing as mp
+import torch.multiprocessing as tmp
 
-from dgaqn.train import train_gpu_sync, train_serial
+from train.train_serial import train_serial
+from train.train_cpu_sync import train_cpu_sync
+from train.train_cpu_async import train_cpu_async
+from train.train_gpu_sync import train_gpu_sync
+from train.train_gpu_async import train_gpu_async
+
+from dgapn.DGAQN import DGAQN, load_DGAQN
+
 from utils.general_utils import load_model
+
 from environment.env import CReM_Env
 
 def read_args():
@@ -22,6 +32,7 @@ def read_args():
     add_arg('--use_cpu', action='store_true')
     add_arg('--gpu', default='0')
     add_arg('--nb_procs', type=int, default=4)
+    add_arg('--mode', default='gpu_sync', help='cpu_sync;cpu_async;gpu_sync;gpu_async')
     #add_arg('--seed', help='RNG seed', type=int, default=666)
 
     add_arg('--warm_start_dataset', default='')
@@ -29,7 +40,7 @@ def read_args():
     add_arg('--log_interval', type=int, default=20)         # print avg reward in the interval
     add_arg('--save_interval', type=int, default=400)       # save model in the interval
 
-    add_arg('--reward_type', type=str, default='plogp', help='plogp;logp;dock')
+    add_arg('--reward_type', type=str, default='plogp', help='logp;plogp;dock')
 
     add_arg('--iota', type=float, default=0.05, help='relative weight for innovation reward')
     add_arg('--innovation_reward_episode_delay', type=int, default=100)
@@ -40,10 +51,10 @@ def read_args():
     add_arg('--max_episodes', type=int, default=50000)      # max training episodes
     add_arg('--max_timesteps', type=int, default=12)        # max timesteps in one episode
     add_arg('--update_timesteps', type=int, default=200)    # update value network every n timesteps
-    add_arg('--k_epochs', type=int, default=50)             # update value network for K epochs
-    add_arg('--double_q', action='store_true')              # use double Q
-    add_arg('--eps_clip', type=float, default=0.05)         # parameter for epsilon greedy
+    add_arg('--k_epochs', type=int, default=30)             # update value network for K epochs
+    add_arg('--eps_greed', type=float, default=0.05)        # parameter for epsilon greedy
     add_arg('--gamma', type=float, default=0.99)            # discount factor
+    add_arg('--double_q', action='store_true')              # use double Q
     add_arg('--dqn_lr', type=float, default=5e-4)           # learning rate for value network
     add_arg('--rnd_lr', type=float, default=2e-3)           # learning rate for random network
     add_arg('--beta1', type=float, default=0.9)             # beta1 for Adam optimizer
@@ -53,15 +64,15 @@ def read_args():
     # NETWORK PARAMETERS
     add_arg('--embed_model_url', default='')
     add_arg('--embed_model_path', default='')
-    add_arg('--emb_nb_shared', type=int, default=2)         # number of layers to inherit from the embedding model
+    add_arg('--emb_nb_inherit', type=int, default=2)        # number of layers to inherit from the embedding model
 
     add_arg('--input_size', type=int, default=121)
     add_arg('--nb_edge_types', type=int, default=1)
     add_arg('--use_3d', action='store_true')
-    add_arg('--gnn_nb_layers', type=int, default=3)         # number of layers on top of the inherited layers
-    add_arg('--gnn_nb_hidden', type=int, default=256, help='hidden size of Graph Networks')
-    add_arg('--val_num_layers', type=int, default=3)
-    add_arg('--val_num_hidden', type=int, default=256, help='hidden size of Value Networks')
+    add_arg('--gnn_nb_layers', type=int, default=3)         # number of gnn layers on top of the inherited layers
+    add_arg('--gnn_nb_hidden', type=int, default=256, help='hidden size of Graph Layers')
+    add_arg('--enc_num_layers', type=int, default=3)
+    add_arg('--enc_num_hidden', type=int, default=256, help='hidden size of Fully Connected Layers')
     add_arg('--rnd_num_layers', type=int, default=1)
     add_arg('--rnd_num_hidden', type=int, default=256, help='hidden size of Random Networks')
     add_arg('--rnd_num_output', type=int, default=8)
@@ -73,34 +84,82 @@ def read_args():
 
     return parser.parse_args()
 
-def main():
+if __name__ == '__main__':
     args = read_args()
+    print("====args====\n", args)
+
+    # Process
     #args.nb_procs = mp.cpu_count()
 
+    # Optimizer
+    args.lr = (args.actor_lr, args.critic_lr, args.rnd_lr)
+    args.betas = (args.beta1, args.beta2)
+    print("lr:", args.lr, "beta:", args.betas, "eps:", args.eps)
+
+    # Input
     embed_state = None
     if args.embed_model_url != '' or args.embed_model_path != '':
         embed_state = load_model(args.artifact_path,
                                     args.embed_model_url,
                                     args.embed_model_path,
                                     name='embed_model')
-        assert args.emb_nb_shared <= embed_state['nb_layers']
+        assert args.emb_nb_inherit <= embed_state['nb_layers']
         if not embed_state['use_3d']:
             assert not args.use_3d
         args.input_size = embed_state['nb_hidden']
         args.nb_edge_types = embed_state['nb_edge_types']
-
-    env = CReM_Env(args.data_path, args.warm_start_dataset, mode='mol')
-    #ob, _, _ = env.reset()
-    #args.input_size = ob.x.shape[1]
-
-    print("====args====\n", args)
     args.embed_state = embed_state
 
-    if args.nb_procs > 1:
-        train_gpu_sync(args, env)
-    else:
-        train_serial(args, env)
+    # Environment
+    env = CReM_Env(args.data_path, args.warm_start_dataset, mode='mol')
+    #ob, _, _ = env.reset(return_type='pyg')
+    #assert ob.x.shape[1] == args.input_size
 
-if __name__ == '__main__':
-    mp.set_start_method('fork', force=True)
-    main()
+    # Model
+    if args.running_model_path != '':
+        model = load_DGAQN(args.running_model_path)
+    else:
+        model = DGAQN(args.lr,
+                        args.betas,
+                        args.eps,
+                        args.gamma,
+                        args.eps_greed,
+                        args.double_q,
+                        args.k_epochs,
+                        args.embed_state,
+                        args.emb_nb_inherit,
+                        args.input_size,
+                        args.nb_edge_types,
+                        args.use_3d,
+                        args.gnn_nb_layers,
+                        args.gnn_nb_hidden,
+                        args.enc_num_layers,
+                        args.enc_num_hidden,
+                        args.rnd_num_layers,
+                        args.rnd_num_hidden,
+                        args.rnd_num_output)
+
+    # Training
+    if args.nb_procs > 1:
+        if args.mode == 'cpu_sync':
+            mp.set_start_method('fork', force=True)
+            train_cpu_sync(args, env, model)
+        elif args.mode == 'cpu_async':
+            mp.set_start_method('fork', force=True)
+            train_cpu_async(args, env, model)
+        elif args.mode == 'gpu_sync':
+            mp.set_start_method('fork', force=True)
+            train_gpu_sync(args, env, model)
+        elif args.mode == 'gpu_async':
+            rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+            resource.setrlimit(resource.RLIMIT_NOFILE, (10000, rlimit[1]))
+            #tmp.set_sharing_strategy('file_system')
+
+            tmp.set_start_method('spawn', force=True)
+            manager = mp.Manager()
+            model.share_memory()
+            train_gpu_async(args, env, model, manager)
+        else:
+            raise ValueError("Mode not recognized.")
+    else:
+        train_serial(args, env, model)

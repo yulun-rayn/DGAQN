@@ -49,21 +49,11 @@ def dgaqn_rollout(save_path,
 
         max_action = np.argmax(Qs)
         min_action = np.argmin(Qs)
-        # print(next_rewards[max_action], next_rewards[min_action])
-        # print(probs.shape, next_rewards.shape)
-        # p = probs.unsqueeze(1)
-        # r = torch.FloatTensor(next_rewards).unsqueeze(1).to(device)
-        # c = torch.cat((p, r), dim=1)
-        # for s in c:
-        #     print("{:5.3f} {:4.1f}".format(s[0], s[1]))
-        # # print(c)
-        # exit()
 
         action = max_action
         mol, mol_candidates, done = env.step(action, include_current_state=False)
 
         try:
-            # new_rew = next_rewards[action]
             new_rew = get_main_reward([mol], reward_type,args=args)[0]
         except Exception as e:
             print(e)
@@ -89,7 +79,7 @@ def dgaqn_rollout(save_path,
 def eval_dgaqn(artifact_path, model, env, reward_type, N=120, K=1, args=None):
     # logging variables
     dt = datetime.now().strftime("%Y.%m.%d_%H:%M:%S")
-    save_path = os.path.join(artifact_path, dt + '_dgaqn.csv')
+    save_path = os.path.join(artifact_path, (args.name if args else '') + '_' + dt + '_dgaqn.csv')
 
     print("\nStarting dgaqn eval...\n")
     avg_improvement = []

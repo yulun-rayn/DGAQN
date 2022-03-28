@@ -20,7 +20,7 @@ def init_DGAQN(state):
                 state['betas'],
                 state['eps'],
                 state['gamma'],
-                state['eps_clip'],
+                state['eps_greed'],
                 state['double_q'],
                 state['k_epochs'],
                 state['emb_state'],
@@ -30,8 +30,8 @@ def init_DGAQN(state):
                 state['use_3d'],
                 state['gnn_nb_layers'],
                 state['gnn_nb_hidden'],
-                state['val_nb_layers'],
-                state['val_nb_hidden'],
+                state['enc_nb_layers'],
+                state['enc_nb_hidden'],
                 state['rnd_nb_layers'],
                 state['rnd_nb_hidden'],
                 state['rnd_nb_output'])
@@ -55,7 +55,7 @@ class DGAQN(nn.Module):
                  betas,
                  eps,
                  gamma,
-                 eps_clip,
+                 eps_greed,
                  double_q,
                  k_epochs,
                  emb_state,
@@ -65,8 +65,8 @@ class DGAQN(nn.Module):
                  use_3d,
                  gnn_nb_layers,
                  gnn_nb_hidden,
-                 val_nb_layers,
-                 val_nb_hidden,
+                 enc_nb_layers,
+                 enc_nb_hidden,
                  rnd_nb_layers,
                  rnd_nb_hidden,
                  rnd_nb_output):
@@ -85,7 +85,7 @@ class DGAQN(nn.Module):
         self.betas=betas
         self.eps=eps
         self.gamma=gamma
-        self.eps_clip=eps_clip
+        self.eps_greed=eps_greed
         self.double_q=double_q
         self.k_epochs=k_epochs
         self.emb_state=emb_state
@@ -95,8 +95,8 @@ class DGAQN(nn.Module):
         self.use_3d=use_3d
         self.gnn_nb_layers=gnn_nb_layers
         self.gnn_nb_hidden=gnn_nb_hidden
-        self.val_nb_layers=val_nb_layers
-        self.val_nb_hidden=val_nb_hidden
+        self.enc_nb_layers=enc_nb_layers
+        self.enc_nb_hidden=enc_nb_hidden
         self.rnd_nb_layers=rnd_nb_layers
         self.rnd_nb_hidden=rnd_nb_hidden
         self.rnd_nb_output=rnd_nb_output
@@ -105,15 +105,15 @@ class DGAQN(nn.Module):
                                     betas,
                                     eps,
                                     gamma,
-                                    eps_clip,
+                                    eps_greed,
                                     double_q,
                                     input_dim,
                                     nb_edge_types,
                                     use_3d,
                                     gnn_nb_layers,
                                     gnn_nb_hidden,
-                                    val_nb_layers,
-                                    val_nb_hidden)
+                                    enc_nb_layers,
+                                    enc_nb_hidden)
 
         self.explore_critic = RNDistillation(lr[1],
                                              betas,
@@ -193,7 +193,7 @@ class DGAQN(nn.Module):
         for i in range(1, self.k_epochs+1):
             loss = self.criterion.update(states, candidates, rewards, discounts, old_values, old_Qs, batch_idx)
             rnd_loss = self.explore_critic.update(states_next)
-            if (i%10)==0:
+            if (i%5)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))
 
         # Copy new weights into target network:
@@ -205,7 +205,7 @@ class DGAQN(nn.Module):
                     'betas': self.betas,
                     'eps': self.eps,
                     'gamma': self.gamma,
-                    'eps_clip': self.eps_clip,
+                    'eps_greed': self.eps_greed,
                     'double_q': self.double_q,
                     'k_epochs': self.k_epochs,
                     'emb_state': self.emb_state,
@@ -215,8 +215,8 @@ class DGAQN(nn.Module):
                     'use_3d': self.use_3d,
                     'gnn_nb_layers': self.gnn_nb_layers,
                     'gnn_nb_hidden': self.gnn_nb_hidden,
-                    'val_nb_layers': self.val_nb_layers,
-                    'val_nb_hidden': self.val_nb_hidden,
+                    'enc_nb_layers': self.enc_nb_layers,
+                    'enc_nb_hidden': self.enc_nb_hidden,
                     'rnd_nb_layers': self.rnd_nb_layers,
                     'rnd_nb_hidden': self.rnd_nb_hidden,
                     'rnd_nb_output': self.rnd_nb_output}

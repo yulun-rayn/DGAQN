@@ -1,6 +1,6 @@
 # Distilled Graph Attention Q-Network (under development)
 
-This repository is the official implementation of Distilled Graph Attention Q-Network (DGAQN). The implementation of Spatial Graph Attention Network (sGAT) submodule can be found [here](https://github.com/yulun-rayn/sGAT).
+This repository is the official implementation of Distilled Graph Attention Q-Network (DGAQN), the Q learning counterpart of [DGAPN](https://github.com/yulun-rayn/DGAPN). The implementation of Spatial Graph Attention Network (sGAT) submodule can be found [here](https://github.com/yulun-rayn/sGAT).
 
 
 ## Requirements
@@ -14,6 +14,7 @@ git submodule update --init --recursive
 
 #### 2. Install Python Dependencies
 ```bash
+conda config --append channels conda-forge
 conda create -n dgaqn-env --file requirements.txt
 conda activate dgaqn-env
 pip install crem==0.2.5
@@ -27,7 +28,7 @@ pip install crem==0.2.5
 
 #### 4. Install Docking Software (if docking reward is desired)
 
-To evaluate molecular docking scores, the docking program [AutoDock-GPU](https://github.com/ccsb-scripps/AutoDock-GPU/wiki) and [Open Babel](https://open-babel.readthedocs.io/en/latest/Command-line_tools/babel.html) need to be installed. After installations, change `OBABEL_PATH` and `ADT_PATH` in [the reward function](src/reward/adtgpu/get_reward.py) to the corresponding executable paths on your system.
+To evaluate molecular docking scores, the docking program [AutoDock-GPU](https://github.com/ccsb-scripps/AutoDock-GPU/wiki) ([v1.4](https://github.com/ccsb-scripps/AutoDock-GPU/releases)) and [Open Babel](https://open-babel.readthedocs.io/en/latest/Command-line_tools/babel.html) need to be installed. After installations, change `OBABEL_PATH` and `ADT_PATH` in [the reward function](src/reward/adtgpu/get_reward.py) to the corresponding executable paths on your system.
 
 [The provided resources](src/reward/adtgpu/receptor) are for docking in the catalytic site of NSP15. If docking against a new protein is desired, several input receptor files need to be generated, see [the sub-directory](src/reward/adtgpu) for more details.
 

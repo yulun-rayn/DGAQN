@@ -47,7 +47,7 @@ class TargetGAQN(nn.Module):
                  betas,
                  eps,
                  gamma,
-                 eps_clip,
+                 eps_greed,
                  double_q,
                  input_dim,
                  nb_edge_types,
@@ -60,7 +60,7 @@ class TargetGAQN(nn.Module):
         self.double_q = double_q
 
         # actor
-        self.actor = GAQN_Actor(eps_clip)
+        self.actor = GAQN_Actor(eps_greed)
         # critic
         self.critic = GAQN_Critic(gamma,
                                   input_dim,
@@ -176,16 +176,16 @@ class GAQN_Critic(nn.Module):
 
 
 class GAQN_Actor(nn.Module):
-    def __init__(self, eps_clip):
+    def __init__(self, eps_greed):
         super(GAQN_Actor, self).__init__()
-        self.eps_clip = eps_clip
+        self.eps_greed = eps_greed
 
     def forward(self):
         raise NotImplementedError
 
     def select_action(self, candidates, values, batch_idx, eps=None):
         if eps is None:
-            eps = self.eps_clip
+            eps = self.eps_greed
         probs = batched_argmax(values, batch_idx, eps=eps)
         shifted_actions = batched_sample(probs, batch_idx)
 
