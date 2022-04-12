@@ -12,7 +12,7 @@ from train.train_cpu_async import train_cpu_async
 from train.train_gpu_sync import train_gpu_sync
 from train.train_gpu_async import train_gpu_async
 
-from dgapn.DGAQN import DGAQN, load_DGAQN
+from dgaqn.DGAQN import DGAQN, load_DGAQN
 
 from utils.general_utils import load_model
 
@@ -72,9 +72,9 @@ def read_args():
     add_arg('--gnn_nb_layers', type=int, default=3)         # number of gnn layers on top of the inherited layers
     add_arg('--gnn_nb_hidden', type=int, default=256, help='hidden size of Graph Layers')
     add_arg('--enc_num_layers', type=int, default=3)
-    add_arg('--enc_num_hidden', type=int, default=256, help='hidden size of Fully Connected Layers')
+    add_arg('--enc_num_hidden', type=int, default=256, help='hidden size of Fully Connected Layers for Policy Network')
     add_arg('--rnd_num_layers', type=int, default=1)
-    add_arg('--rnd_num_hidden', type=int, default=256, help='hidden size of Random Networks')
+    add_arg('--rnd_num_hidden', type=int, default=256, help='hidden size of Fully Connected Layers for Random Networks')
     add_arg('--rnd_num_output', type=int, default=8)
 
     # AUTODOCK PARAMETERS
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     #args.nb_procs = mp.cpu_count()
 
     # Optimizer
-    args.lr = (args.actor_lr, args.critic_lr, args.rnd_lr)
+    args.lr = (args.dqn_lr, args.rnd_lr)
     args.betas = (args.beta1, args.beta2)
     print("lr:", args.lr, "beta:", args.betas, "eps:", args.eps)
 
@@ -138,6 +138,11 @@ if __name__ == '__main__':
                         args.rnd_num_layers,
                         args.rnd_num_hidden,
                         args.rnd_num_output)
+
+    # Device
+    args.device = torch.device("cpu") if args.use_cpu else torch.device(
+        'cuda:' + str(args.gpu) if torch.cuda.is_available() else "cpu")
+    model.to_device(args.device)
 
     # Training
     if args.nb_procs > 1:

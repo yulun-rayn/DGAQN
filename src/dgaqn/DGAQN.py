@@ -178,8 +178,6 @@ class DGAQN(nn.Module):
         # convert list to tensor
         states = [Batch().from_data_list([state[i] for state in memory.states]).to(self.device) 
                     for i in range(1+self.use_3d)]
-        states_next = [Batch().from_data_list([state_next[i] for state_next in memory.states_next]).to(self.device) 
-                    for i in range(1+self.use_3d)]
         candidates = [Batch().from_data_list([item[i] for sublist in memory.candidates for item in sublist]).to(self.device)
                         for i in range(1+self.use_3d)]
         rewards = torch.tensor(memory.rewards).to(self.device)
@@ -192,7 +190,7 @@ class DGAQN(nn.Module):
 
         for i in range(1, self.k_epochs+1):
             loss = self.criterion.update(states, candidates, rewards, discounts, old_values, old_Qs, batch_idx)
-            rnd_loss = self.explore_critic.update(states_next)
+            rnd_loss = self.explore_critic.update(states)
             if (i%5)==0:
                 logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))
 

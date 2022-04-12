@@ -27,23 +27,20 @@ from utils.graph_utils import mols_to_pyg_batch
 
 class Memory:
     def __init__(self):
-        self.states = []        # state representations: pyg graph
+        self.states = []        # selected state representations: pyg graph
         self.candidates = []    # next state (candidate) representations: pyg graph
-        self.states_next = []   # next state (chosen) representations: pyg graph
         self.rewards = []       # rewards: float
         self.terminals = []     # trajectory status: logical
 
     def extend(self, memory):
         self.states.extend(memory.states)
         self.candidates.extend(memory.candidates)
-        self.states_next.extend(memory.states_next)
         self.rewards.extend(memory.rewards)
         self.terminals.extend(memory.terminals)
 
     def clear(self):
         del self.states[:]
         del self.candidates[:]
-        del self.states_next[:]
         del self.rewards[:]
         del self.terminals[:]
 
@@ -139,16 +136,11 @@ class Sampler(mp.Process):
 
             while self.sample_count*self.nb_procs < self.update_timesteps:
                 state, candidates, done = self.env.reset()
+                _, _, action = self.model.select_action(
+                    mols_to_pyg_batch(state, self.model.emb_3d, device=self.model.device),
+                    mols_to_pyg_batch(candidates, self.model.emb_3d, device=self.model.device))
 
                 for t in range(self.max_timesteps):
-                    # Running policy:
-                    state_emb, candidates_emb, action = self.model.select_action(
-                        mols_to_pyg_batch(state, self.model.emb_3d, device=self.model.device),
-                        mols_to_pyg_batch(candidates, self.model.emb_3d, device=self.model.device))
-                    self.memory.states.append(state_emb[0])
-                    self.memory.candidates.append(candidates_emb)
-                    self.memory.states_next.append(candidates_emb[action])
-
                     state, candidates, done = self.env.step(action)
 
                     reward = 0
@@ -165,6 +157,13 @@ class Sampler(mp.Process):
                     # Saving rewards and terminals:
                     self.memory.rewards.append(reward)
                     self.memory.terminals.append(done)
+
+                    # Running policy:
+                    state_emb, candidates_emb, action = self.model.select_action(
+                        mols_to_pyg_batch(state, self.model.emb_3d, device=self.model.device),
+                        mols_to_pyg_batch(candidates, self.model.emb_3d, device=self.model.device))
+                    self.memory.states.append(state_emb[0])
+                    self.memory.candidates.append(candidates_emb)
 
                     if done:
                         break

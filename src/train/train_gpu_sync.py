@@ -27,23 +27,20 @@ from utils.graph_utils import mols_to_pyg_batch
 
 class Memory:
     def __init__(self):
-        self.states = []        # state representations: pyg graph
+        self.states = []        # selected state representations: pyg graph
         self.candidates = []    # next state (candidate) representations: pyg graph
-        self.states_next = []   # next state (chosen) representations: pyg graph
         self.rewards = []       # rewards: float
         self.terminals = []     # trajectory status: logical
 
     def extend(self, memory):
         self.states.extend(memory.states)
         self.candidates.extend(memory.candidates)
-        self.states_next.extend(memory.states_next)
         self.rewards.extend(memory.rewards)
         self.terminals.extend(memory.terminals)
 
     def clear(self):
         del self.states[:]
         del self.candidates[:]
-        del self.states_next[:]
         del self.rewards[:]
         del self.terminals[:]
 
@@ -93,12 +90,12 @@ class Sampler(mp.Process):
                 continue
             # print('%s: Working' % proc_name)
             if done:
-                self.timestep_counter = 0
+                self.timestep_count = 0
                 state, candidates, done = self.env.reset(return_type='smiles')
             else:
-                self.timestep_counter += 1
+                self.timestep_count += 1
                 state, candidates, done = self.env.reset(state, return_type='smiles')
-                if self.timestep_counter >= self.max_timesteps:
+                if self.timestep_count >= self.max_timesteps:
                     done = True
 
             self.result_queue.put((index, state, candidates, done))
@@ -179,28 +176,18 @@ def train_gpu_sync(args, env, model):
             notdone_idx.append(index)
             candidates.append(cands)
             batch_idx.extend([index] * len(cands))
-        while True:
-            # action selections (for not done)
-            if len(notdone_idx) > 0:
-                states_emb, candidates_emb, actions = model.select_action(
-                    mols_to_pyg_batch([Chem.MolFromSmiles(states[idx])
-                        for idx in notdone_idx], model.emb_3d, device=model.device),
-                    mols_to_pyg_batch([Chem.MolFromSmiles(item) 
-                        for sublist in candidates for item in sublist], model.emb_3d, device=model.device),
-                    batch_idx)
-                if not isinstance(actions, list):
-                    actions = [actions]
-            else:
-                if sample_count >= args.update_timesteps:
-                    break
+        _, _, actions = model.select_action(
+            mols_to_pyg_batch([Chem.MolFromSmiles(states[idx])
+                for idx in notdone_idx], model.emb_3d, device=model.device),
+            mols_to_pyg_batch([Chem.MolFromSmiles(item) 
+                for sublist in candidates for item in sublist], model.emb_3d, device=model.device),
+            batch_idx)
+        if not isinstance(actions, list):
+            actions = [actions]
 
+        while True:
             for i, idx in enumerate(notdone_idx):
                 tasks.put((idx, candidates[i][actions[i]], False))
-                cands = [data for j, data in enumerate(candidates_emb) if batch_idx[j] == idx]
-
-                memories[idx].states.append(states_emb[i])
-                memories[idx].candidates.append(cands)
-                memories[idx].states_next.append(cands[actions[i]])
             for idx in done_idx:
                 if sample_count >= args.update_timesteps:
                     tasks.put((None, None, True))
@@ -216,12 +203,14 @@ def train_gpu_sync(args, env, model):
 
                 if index is not None:
                     states[index] = state
+                if index in notdone_idx:
+                    candidates.append(cands)
+                    batch_idx.extend([index] * len(cands))
+
                 if done:
                     new_done_idx.append(index)
                 else:
                     new_notdone_idx.append(index)
-                    candidates.append(cands)
-                    batch_idx.extend([index] * len(cands))
             # get final rewards (for previously not done but now done)
             nowdone_idx = [idx for idx in notdone_idx if idx in new_done_idx]
             stillnotdone_idx = [idx for idx in notdone_idx if idx in new_notdone_idx]
@@ -270,6 +259,26 @@ def train_gpu_sync(args, env, model):
             sample_count += len(notdone_idx)
             episode_count += len(nowdone_idx)
             running_length += len(notdone_idx)
+
+            # action selections (for not done)
+            if len(notdone_idx) > 0:
+                states_emb, candidates_emb, actions = model.select_action(
+                    mols_to_pyg_batch([Chem.MolFromSmiles(states[idx])
+                        for idx in notdone_idx], model.emb_3d, device=model.device),
+                    mols_to_pyg_batch([Chem.MolFromSmiles(item) 
+                        for sublist in candidates for item in sublist], model.emb_3d, device=model.device),
+                    batch_idx)
+                if not isinstance(actions, list):
+                    actions = [actions]
+            else:
+                if sample_count >= args.update_timesteps:
+                    break
+
+            for i, idx in enumerate(notdone_idx):
+                cands = [data for j, data in enumerate(candidates_emb) if batch_idx[j] == idx]
+
+                memories[idx].states.append(states_emb[i])
+                memories[idx].candidates.append(cands)
 
             done_idx = new_done_idx
             notdone_idx = new_notdone_idx

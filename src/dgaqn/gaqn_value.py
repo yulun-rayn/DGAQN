@@ -54,8 +54,8 @@ class TargetGAQN(nn.Module):
                  use_3d,
                  gnn_nb_layers,
                  gnn_nb_hidden,
-                 mlp_nb_layers,
-                 mlp_nb_hidden):
+                 enc_nb_layers,
+                 enc_nb_hidden):
         super(TargetGAQN, self).__init__()
         self.double_q = double_q
 
@@ -68,8 +68,8 @@ class TargetGAQN(nn.Module):
                                   use_3d,
                                   gnn_nb_layers,
                                   gnn_nb_hidden,
-                                  mlp_nb_layers,
-                                  mlp_nb_hidden)
+                                  enc_nb_layers,
+                                  enc_nb_hidden)
         self.optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr, betas=betas, eps=eps)
 
         self.critic_target = GAQN_Critic(gamma,
@@ -78,8 +78,8 @@ class TargetGAQN(nn.Module):
                                             use_3d,
                                             gnn_nb_layers,
                                             gnn_nb_hidden,
-                                            mlp_nb_layers,
-                                            mlp_nb_hidden)
+                                            enc_nb_layers,
+                                            enc_nb_hidden)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
     def forward(self):
@@ -123,8 +123,8 @@ class GAQN_Critic(nn.Module):
                  use_3d,
                  gnn_nb_layers,
                  gnn_nb_hidden,
-                 val_nb_layers,
-                 val_nb_hidden):
+                 enc_nb_layers,
+                 enc_nb_hidden):
         super(GAQN_Critic, self).__init__()
         self.gamma = gamma
 
@@ -132,10 +132,10 @@ class GAQN_Critic(nn.Module):
             gnn_nb_hidden = [gnn_nb_hidden] * gnn_nb_layers
         else:
             assert len(gnn_nb_hidden) == gnn_nb_layers
-        if not isinstance(val_nb_hidden, list):
-            val_nb_hidden = [val_nb_hidden] * val_nb_layers
+        if not isinstance(enc_nb_hidden, list):
+            enc_nb_hidden = [enc_nb_hidden] * enc_nb_layers
         else:
-            assert len(val_nb_hidden) == val_nb_layers
+            assert len(enc_nb_hidden) == enc_nb_layers
 
         # gnn encoder
         self.gnn = sGAT(input_dim, nb_edge_types, gnn_nb_hidden, gnn_nb_layers, use_3d=use_3d)
@@ -146,9 +146,9 @@ class GAQN_Critic(nn.Module):
 
         # mlp encoder
         layers = []
-        for i in range(val_nb_layers):
-            layers.append(nn.Linear(in_dim, val_nb_hidden[i]))
-            in_dim = val_nb_hidden[i]
+        for i in range(enc_nb_layers):
+            layers.append(nn.Linear(in_dim, enc_nb_hidden[i]))
+            in_dim = enc_nb_hidden[i]
 
         self.layers = nn.ModuleList(layers)
         self.final_layer = nn.Linear(in_dim, 1)

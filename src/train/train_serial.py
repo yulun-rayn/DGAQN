@@ -24,23 +24,20 @@ from utils.graph_utils import mols_to_pyg_batch
 
 class Memory:
     def __init__(self):
-        self.states = []        # state representations: pyg graph
+        self.states = []        # selected state representations: pyg graph
         self.candidates = []    # next state (candidate) representations: pyg graph
-        self.states_next = []   # next state (chosen) representations: pyg graph
         self.rewards = []       # rewards: float
         self.terminals = []     # trajectory status: logical
 
     def extend(self, memory):
         self.states.extend(memory.states)
         self.candidates.extend(memory.candidates)
-        self.states_next.extend(memory.states_next)
         self.rewards.extend(memory.rewards)
         self.terminals.extend(memory.terminals)
 
     def clear(self):
         del self.states[:]
         del self.candidates[:]
-        del self.states_next[:]
         del self.rewards[:]
         del self.terminals[:]
 
@@ -71,17 +68,11 @@ def train_serial(args, env, model):
         if time_step == 0:
             logging.info("\n\ncollecting rollouts")
         state, candidates, done = env.reset()
+        _, _, action = model.select_action(
+            mols_to_pyg_batch(state, model.emb_3d, device=model.device),
+            mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
 
         for t in range(args.max_timesteps):
-            time_step += 1
-            # Running policy:
-            state_emb, candidates_emb, action = model.select_action(
-                mols_to_pyg_batch(state, model.emb_3d, device=model.device),
-                mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
-            memory.states.append(state_emb[0])
-            memory.candidates.append(candidates_emb)
-            memory.states_next.append(candidates_emb[action])
-
             state, candidates, done = env.step(action)
 
             reward = 0
@@ -101,9 +92,17 @@ def train_serial(args, env, model):
             memory.rewards.append(reward)
             memory.terminals.append(done)
 
+            # Running policy:
+            state_emb, candidates_emb, action = model.select_action(
+                mols_to_pyg_batch(state, model.emb_3d, device=model.device),
+                mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
+            memory.states.append(state_emb[0])
+            memory.candidates.append(candidates_emb)
+
             if done:
                 break
 
+        time_step += (t+1)
         # update if it's time
         if time_step >= args.update_timesteps:
             logging.info("\nupdating model @ episode %d..." % i_episode)
