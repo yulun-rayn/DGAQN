@@ -87,22 +87,21 @@ class TargetGAQN(nn.Module):
 
     def select_action(self, candidates, batch_idx):
         Qs = self.critic.get_value(candidates)
-        shifted_actions = self.actor.select_action(
-            torch.arange(len(batch_idx), device=batch_idx.device), Qs, batch_idx)
-        actions = shifted_actions - get_batch_shift(batch_idx)
+        actions = self.actor.select_action(Qs, batch_idx, return_shifted=False)
 
         return actions.squeeze_().tolist()
 
     def select_value(self, candidates, batch_idx):
         Qs = self.critic_target.get_value(candidates)
-        values = self.actor.select_action(Qs, Qs, batch_idx, eps=0)
+        shifted_actions = self.actor.select_action(Qs, batch_idx, eps=0)
 
-        return values, Qs
+        return Qs[shifted_actions], Qs
 
     def update(self, states, candidates, rewards, discounts, old_values, old_Qs, batch_idx):
         if self.double_q:
             Qs = self.critic.get_value(candidates)
-            old_values = self.actor.select_action(old_Qs, Qs, batch_idx, eps=0)
+            shifted_actions = self.actor.select_action(old_Qs, Qs, batch_idx, eps=0)
+            old_values = old_Qs[shifted_actions]
         loss = self.critic.loss(states, rewards, old_values, discounts)
 
         self.optimizer.zero_grad()
@@ -183,10 +182,13 @@ class GAQN_Actor(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def select_action(self, candidates, values, batch_idx, eps=None):
+    def select_action(self, values, batch_idx, eps=None, return_shifted=True):
         if eps is None:
             eps = self.eps_greed
         probs = batched_argmax(values, batch_idx, eps=eps)
         shifted_actions = batched_sample(probs, batch_idx)
 
-        return candidates[shifted_actions]
+        if return_shifted:
+            return shifted_actions
+        else:
+            return shifted_actions - get_batch_shift(batch_idx)

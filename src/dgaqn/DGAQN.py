@@ -169,13 +169,13 @@ class DGAQN(nn.Module):
         return scores.squeeze().tolist()
 
     def update(self, memory, eps=1e-5):
-        # candidates batch
+        # batch index of candidates
         batch_idx = []
         for i, cands in enumerate(memory.candidates):
             batch_idx.extend([i]*len(cands))
         batch_idx = torch.LongTensor(batch_idx).to(self.device)
 
-        # convert list to tensor
+        # memory lists to tensors
         states = [Batch().from_data_list([state[i] for state in memory.states]).to(self.device) 
                     for i in range(1+self.use_3d)]
         candidates = [Batch().from_data_list([item[i] for sublist in memory.candidates for item in sublist]).to(self.device)
@@ -185,7 +185,7 @@ class DGAQN(nn.Module):
 
         old_values, old_Qs = self.criterion.select_value(candidates, batch_idx)
 
-        # Optimize value for k epochs:
+        # model optimization
         logging.info("Optimizing...")
 
         for i in range(1, self.k_epochs+1):
