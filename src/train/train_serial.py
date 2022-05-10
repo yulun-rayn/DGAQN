@@ -54,7 +54,7 @@ def train_serial(args, env, model):
     initialize_logger(save_dir)
     logging.info(model)
 
-    time_step = 0
+    sample_count = 0
 
     running_length = 0
     running_reward = 0
@@ -65,18 +65,18 @@ def train_serial(args, env, model):
     molbuffer_env = deque(maxlen=10000)
     # training loop
     for i_episode in range(1, args.max_episodes+1):
-        if time_step == 0:
+        if sample_count == 0:
             logging.info("\n\ncollecting rollouts")
         state, candidates, done = env.reset()
         _, _, action = model.select_action(
             mols_to_pyg_batch(state, model.emb_3d, device=model.device),
             mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
 
-        for t in range(args.max_timesteps):
+        for t in range(1, args.max_timesteps+1):
             state, candidates, done = env.step(action)
 
             reward = 0
-            if (t==(args.max_timesteps-1)) or done:
+            if (t==args.max_timesteps) or done:
                 main_reward = get_main_reward(state, reward_type=args.reward_type, args=args)[0]
                 reward = main_reward
                 running_main_reward += main_reward
@@ -102,23 +102,24 @@ def train_serial(args, env, model):
             if done:
                 break
 
-        time_step += (t+1)
+        sample_count += t
+        running_length += t
+
+        rewbuffer_env.append(main_reward)
+        molbuffer_env.append((Chem.MolToSmiles(state), main_reward))
+
+        # write to Tensorboard
+        writer.add_scalar("EpMainRew", main_reward, i_episode-1)
+        writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode-1)
+
         # update if it's time
-        if time_step >= args.update_timesteps:
+        if sample_count >= args.update_timesteps:
             logging.info("\nupdating model @ episode %d..." % i_episode)
-            time_step = 0
+            sample_count = 0
             model.update(memory)
             memory.clear()
             # save running model
             save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pt'))
-
-        writer.add_scalar("EpMainRew", main_reward, i_episode-1)
-        rewbuffer_env.append(main_reward) # reward
-        molbuffer_env.append((Chem.MolToSmiles(state), main_reward))
-        running_length += (t+1)
-
-        # write to Tensorboard
-        writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode-1)
 
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
