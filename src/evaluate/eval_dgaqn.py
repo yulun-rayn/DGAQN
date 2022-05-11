@@ -8,7 +8,7 @@ from rdkit import Chem
 
 import torch
 
-from reward.get_main_reward import get_main_reward
+from reward.get_reward import get_reward
 
 from utils.graph_utils import mols_to_pyg_batch
 
@@ -29,7 +29,7 @@ def dgaqn_rollout(save_path,
     smile_best = Chem.MolToSmiles(mol, isomericSmiles=False)
     emb_model_3d = model.emb_model.use_3d if model.emb_model is not None else model.use_3d
 
-    new_rew = get_main_reward(mol, reward_type, args=args)[0]
+    new_rew = get_reward(mol, reward_type, args=args)
     start_rew = new_rew
     best_rew = new_rew
     steps_remaining = K
@@ -41,20 +41,19 @@ def dgaqn_rollout(save_path,
         if model.emb_model is not None:
             with torch.autograd.no_grad():
                 g_candidates = model.emb_model.get_embedding(g_candidates, n_layers=model.emb_nb_shared, return_3d=model.use_3d, aggr=False)
-        # next_rewards = get_main_reward(mol_candidates, reward_type, args=args)
+        # next_rewards = get_reward(mol_candidates, reward_type, args=args)
 
         with torch.autograd.no_grad():
             Qs = model.criterion.critic(g_candidates)
         Qs = Qs.cpu().numpy()
 
         max_action = np.argmax(Qs)
-        min_action = np.argmin(Qs)
 
         action = max_action
         mol, mol_candidates, done = env.step(action, include_current_state=False)
 
         try:
-            new_rew = get_main_reward([mol], reward_type,args=args)[0]
+            new_rew = get_reward(mol, reward_type,args=args)
         except Exception as e:
             print(e)
             break
