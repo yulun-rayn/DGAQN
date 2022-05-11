@@ -22,7 +22,8 @@ def init_DGAQN(state):
                 state['gamma'],
                 state['eps_greed'],
                 state['double_q'],
-                state['k_epochs'],
+                state['critic_epochs'],
+                state['rnd_epochs'],
                 state['emb_state'],
                 state['emb_nb_shared'],
                 state['input_dim'],
@@ -57,7 +58,8 @@ class DGAQN(nn.Module):
                  gamma,
                  eps_greed,
                  double_q,
-                 k_epochs,
+                 critic_epochs,
+                 rnd_epochs,
                  emb_state,
                  emb_nb_shared,
                  input_dim,
@@ -87,7 +89,8 @@ class DGAQN(nn.Module):
         self.gamma=gamma
         self.eps_greed=eps_greed
         self.double_q=double_q
-        self.k_epochs=k_epochs
+        self.critic_epochs=critic_epochs
+        self.rnd_epochs=rnd_epochs
         self.emb_state=emb_state
         self.emb_nb_shared=emb_nb_shared
         self.input_dim=input_dim
@@ -168,7 +171,7 @@ class DGAQN(nn.Module):
         scores = self.explore_critic.get_score(states_next)
         return scores.squeeze().tolist()
 
-    def update(self, memory, eps=1e-5):
+    def update(self, memory, nb_prints=5):
         # batch index of candidates
         batch_idx = []
         for i, cands in enumerate(memory.candidates):
@@ -188,11 +191,14 @@ class DGAQN(nn.Module):
         # model optimization
         logging.info("Optimizing...")
 
-        for i in range(1, self.k_epochs+1):
+        for i in range(1, self.critic_epochs+1):
             loss = self.criterion.update(states, candidates, rewards, discounts, old_values, old_Qs, batch_idx)
+            if (i % int(self.critic_epochs/nb_prints)) == 0:
+                logging.info("  {:3d}: DQN Loss: {:7.3f}".format(i, loss))
+        for i in range(1, self.rnd_epochs+1):
             rnd_loss = self.explore_critic.update(states)
-            if (i%5)==0:
-                logging.info("  {:3d}: DQN Loss: {:7.3f}, RND Loss: {:7.3f}".format(i, loss, rnd_loss))
+            #if (i % int(self.rnd_epochs/nb_prints)) == 0:
+            #    logging.info("  {:3d}: RND Loss: {:7.3f}".format(i, rnd_loss))
 
         # Copy new weights into target network:
         self.criterion.update_target()
@@ -205,7 +211,8 @@ class DGAQN(nn.Module):
                     'gamma': self.gamma,
                     'eps_greed': self.eps_greed,
                     'double_q': self.double_q,
-                    'k_epochs': self.k_epochs,
+                    'critic_epochs': self.critic_epochs,
+                    'rnd_epochs': self.rnd_epochs,
                     'emb_state': self.emb_state,
                     'emb_nb_shared': self.emb_nb_shared,
                     'input_dim': self.input_dim,

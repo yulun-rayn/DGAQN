@@ -51,7 +51,8 @@ def read_args():
     add_arg('--max_episodes', type=int, default=50000)      # max training episodes
     add_arg('--max_timesteps', type=int, default=12)        # max timesteps in one episode
     add_arg('--update_timesteps', type=int, default=200)    # update value network every n timesteps
-    add_arg('--k_epochs', type=int, default=30)             # update value network for K epochs
+    add_arg('--critic_epochs', type=int, default=50)        # critic epochs in one update
+    add_arg('--rnd_epochs', type=int, default=5)            # rnd epochs in one update
     add_arg('--eps_greed', type=float, default=0.05)        # parameter for epsilon greedy
     add_arg('--gamma', type=float, default=0.99)            # discount factor
     add_arg('--double_q', action='store_true')              # use double Q
@@ -125,7 +126,8 @@ if __name__ == '__main__':
                         args.gamma,
                         args.eps_greed,
                         args.double_q,
-                        args.k_epochs,
+                        args.critic_epochs,
+                        args.rnd_epochs,
                         args.embed_state,
                         args.emb_nb_inherit,
                         args.input_size,
