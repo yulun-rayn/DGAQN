@@ -100,7 +100,7 @@ class TargetGAQN(nn.Module):
     def update(self, states, candidates, rewards, discounts, old_values, old_Qs, batch_idx):
         if self.double_q:
             Qs = self.critic.get_value(candidates)
-            shifted_actions = self.actor.select_action(old_Qs, Qs, batch_idx, eps=0)
+            shifted_actions = self.actor.select_action(Qs, batch_idx, eps=0)
             old_values = old_Qs[shifted_actions]
         loss = self.critic.loss(states, rewards, old_values, discounts)
 

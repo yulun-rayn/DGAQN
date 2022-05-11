@@ -114,7 +114,7 @@ class Sampler(tmp.Process):
                 mols_to_pyg_batch(candidates, self.model.emb_3d, device=self.model.device))
 
             while self.sample_count.value < self.update_timesteps and self.episode_count.value < self.max_episodes:
-                for t in range(self.max_timesteps):
+                for t in range(1, self.max_timesteps+1):
                     state, candidates, done = self.env.step(action)
 
                     reward = 0
@@ -143,10 +143,10 @@ class Sampler(tmp.Process):
                         break
 
                 with self.lock:
-                    self.sample_count.value += (t+1)
+                    self.sample_count.value += t
                     self.episode_count.value += 1
 
-                self.log.ep_lengths.append(t+1)
+                self.log.ep_lengths.append(t)
                 self.log.ep_rewards.append(sum(self.memory.rewards))
                 self.log.ep_main_rewards.append(main_reward)
                 self.log.ep_mols.append(Chem.MolToSmiles(state))
@@ -229,8 +229,10 @@ def train_gpu_async(args, env, model, manager):
             running_length += log.ep_lengths[i]
             running_reward += log.ep_rewards[i]
             running_main_reward += log.ep_main_rewards[i]
+
             rewbuffer_env.append(log.ep_main_rewards[i])
             molbuffer_env.append(log.ep_mols[i])
+
             writer.add_scalar("EpMainRew", log.ep_main_rewards[i], i_episode - 1)
             writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode - 1)
         log.clear()
@@ -262,9 +264,9 @@ def train_gpu_async(args, env, model, manager):
             logging.info('Episode {} \t Avg length: {} \t Avg reward: {:5.3f} \t Avg main reward: {:5.3f}'.format(
                 i_episode, running_length/log_counter, running_reward/log_counter, running_main_reward/log_counter))
 
+            running_length = 0
             running_reward = 0
             running_main_reward = 0
-            running_length = 0
             log_counter = 0
 
         episode_count.value = 0
