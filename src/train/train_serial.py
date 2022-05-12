@@ -64,62 +64,59 @@ def train_serial(args, env, model):
     rewbuffer_env = deque(maxlen=100)
     molbuffer_env = deque(maxlen=10000)
     # training loop
-    for i_episode in range(1, args.max_episodes+1):
-        if sample_count == 0:
-            logging.info("\n\ncollecting rollouts")
-        state, candidates, done = env.reset()
-        _, _, action = model.select_action(
-            mols_to_pyg_batch(state, model.emb_3d, device=model.device),
-            mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
-
-        for t in range(1, args.max_timesteps+1):
-            state, candidates, done = env.step(action)
-
-            reward = 0
-            if (t==(args.max_timesteps-1)) or done:
-                main_reward = get_reward(state, reward_type=args.reward_type, args=args)
-                reward = main_reward
-                running_main_reward += main_reward
-                done = True
-            if (args.iota > 0 and 
-                i_episode > args.innovation_reward_episode_delay and 
-                i_episode < args.innovation_reward_episode_cutoff):
-                inno_reward = model.get_inno_reward(mols_to_pyg_batch(state, model.emb_3d, device=model.device))
-                reward += inno_reward
-            running_reward += reward
-
-            # Saving rewards and terminals:
-            memory.rewards.append(reward)
-            memory.terminals.append(done)
-
-            # Running policy:
-            state_emb, candidates_emb, action = model.select_action(
+    i_episode = 0
+    while i_episode < args.max_episodes:
+        logging.info("\n\ncollecting rollouts")
+        while sample_count < args.update_timesteps:
+            state, candidates, done = env.reset()
+            _, _, action = model.select_action(
                 mols_to_pyg_batch(state, model.emb_3d, device=model.device),
                 mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
-            memory.states.append(state_emb[0])
-            memory.candidates.append(candidates_emb)
 
-            if done:
-                break
+            for t in range(1, args.max_timesteps+1):
+                state, candidates, done = env.step(action)
 
-        sample_count += t
-        running_length += t
+                reward = 0
+                if (t==(args.max_timesteps-1)) or done:
+                    main_reward = get_reward(state, reward_type=args.reward_type, args=args)
+                    reward = main_reward
+                    running_main_reward += main_reward
+                    done = True
+                if (args.iota > 0 and 
+                    i_episode > args.innovation_reward_episode_delay and 
+                    i_episode < args.innovation_reward_episode_cutoff):
+                    inno_reward = model.get_inno_reward(mols_to_pyg_batch(state, model.emb_3d, device=model.device))
+                    reward += inno_reward
+                running_reward += reward
 
-        rewbuffer_env.append(main_reward)
-        molbuffer_env.append((Chem.MolToSmiles(state), main_reward))
+                # Saving rewards and terminals:
+                memory.rewards.append(reward)
+                memory.terminals.append(done)
 
-        # write to Tensorboard
-        writer.add_scalar("EpMainRew", main_reward, i_episode-1)
-        writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode-1)
+                # Running policy:
+                state_emb, candidates_emb, action = model.select_action(
+                    mols_to_pyg_batch(state, model.emb_3d, device=model.device),
+                    mols_to_pyg_batch(candidates, model.emb_3d, device=model.device))
+                memory.states.append(state_emb[0])
+                memory.candidates.append(candidates_emb)
 
-        # update if it's time
-        if sample_count >= args.update_timesteps:
-            logging.info("\nupdating model @ episode %d..." % i_episode)
-            sample_count = 0
-            model.update(memory)
-            memory.clear()
-            # save running model
-            save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pt'))
+                if done:
+                    break
+
+            sample_count += t
+            running_length += t
+
+            rewbuffer_env.append(main_reward)
+            molbuffer_env.append((Chem.MolToSmiles(state), main_reward))
+
+            # write to Tensorboard
+            writer.add_scalar("EpMainRew", main_reward, i_episode-1)
+            writer.add_scalar("EpRewEnvMean", np.mean(rewbuffer_env), i_episode-1)
+
+        # update model
+        logging.info("\nupdating model @ episode %d..." % i_episode)
+        model.update(memory)
+        memory.clear()
 
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
@@ -132,6 +129,9 @@ def train_serial(args, env, model):
             save_DGAQN(model, os.path.join(save_dir, '{:05d}_dgaqn.pt'.format(i_episode)))
             deque_to_csv(molbuffer_env, os.path.join(save_dir, 'mol_dgaqn.csv'))
 
+        # save running model
+        save_DGAQN(model, os.path.join(save_dir, 'running_dgaqn.pt'))
+
         # logging
         if i_episode % args.log_interval == 0:
             logging.info('Episode {} \t Avg length: {} \t Avg reward: {:5.3f} \t Avg main reward: {:5.3f}'.format(
@@ -140,6 +140,8 @@ def train_serial(args, env, model):
             running_length = 0
             running_reward = 0
             running_main_reward = 0
+
+        sample_count = 0
 
     close_logger()
     writer.close()
