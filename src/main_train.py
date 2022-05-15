@@ -42,9 +42,8 @@ def read_args():
 
     add_arg('--reward_type', type=str, default='plogp', help='logp;plogp;qed;sa;dock')
 
-    add_arg('--iota', type=float, default=0.05, help='relative weight for innovation reward')
-    add_arg('--innovation_reward_episode_delay', type=int, default=100)
-    add_arg('--innovation_reward_episode_cutoff', type=int, default=1000)
+    add_arg('--iota', type=float, default=0.1, help='relative weight for innovation reward')
+    add_arg('--innovation_reward_update_cutoff', type=int, default=50)
 
     # TRAINING PARAMETERS
     add_arg('--solved_reward', type=float, default=100)     # stop training if avg_reward > solved_reward

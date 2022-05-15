@@ -17,7 +17,7 @@ from reward.get_reward import get_reward
 
 from utils.general_utils import initialize_logger, close_logger, deque_to_csv
 from utils.graph_utils import mols_to_pyg_batch
-from utils.rl_utils import Memory, Log
+from utils.rl_utils import Memory, Log, Scheduler
 
 #####################################################
 #                   TRAINING LOOP                   #
@@ -33,6 +33,7 @@ def train_serial(args, env, model):
     logging.info(model)
 
     sample_count = 0
+    update_count = 0
 
     running_length = 0
     running_reward = 0
@@ -41,6 +42,9 @@ def train_serial(args, env, model):
     memory = Memory()
     rewbuffer_env = deque(maxlen=100)
     molbuffer_env = deque(maxlen=10000)
+
+    scheduler = Scheduler(args.innovation_reward_update_cutoff, args.iota, weight_main=False)
+
     # training loop
     i_episode = 0
     while i_episode < args.max_episodes:
@@ -57,14 +61,14 @@ def train_serial(args, env, model):
                 reward = 0
                 if (t==(args.max_timesteps-1)) or done:
                     main_reward = get_reward(state, reward_type=args.reward_type, args=args)
-                    reward = main_reward
+                    reward = scheduler.main_weight(update_count) * main_reward
                     running_main_reward += main_reward
                     done = True
                 if (args.iota > 0 and 
                     i_episode > args.innovation_reward_episode_delay and 
                     i_episode < args.innovation_reward_episode_cutoff):
                     inno_reward = model.get_inno_reward(mols_to_pyg_batch(state, model.emb_3d, device=model.device))
-                    reward += args.iota * inno_reward
+                    reward += scheduler.guide_weight(update_count) * inno_reward
                 running_reward += reward
 
                 # Saving rewards and terminals:
@@ -95,6 +99,7 @@ def train_serial(args, env, model):
         logging.info("\nupdating model @ episode %d..." % i_episode)
         model.update(memory)
         memory.clear()
+        update_count += 1
 
         # stop training if avg_reward > solved_reward
         if np.mean(rewbuffer_env) > args.solved_reward:
